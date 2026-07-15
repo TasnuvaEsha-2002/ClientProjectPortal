@@ -1,6 +1,17 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import './App.css';
+import {
+  Container,
+  Typography,
+  TextField,
+  Button,
+  MenuItem,
+  Card,
+  CardContent,
+  Stack,
+  Chip,
+  Box,
+} from '@mui/material';
 
 const API_URL = 'http://localhost:5256/api/Projects';
 
@@ -57,69 +68,106 @@ function App() {
       });
   };
 
-  if (loading) return <p>Loading projects...</p>;
+  const statusColor = (status) => {
+    if (status === 'Completed') return 'success';
+    if (status === 'In Progress') return 'warning';
+    return 'default';
+  };
+
+  if (loading) return <Typography sx={{ p: 4 }}>Loading projects...</Typography>;
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '600px', margin: '0 auto' }}>
-      <h1>Client Project Collaboration Portal</h1>
+    <Container maxWidth="sm" sx={{ py: 5 }}>
+      <Typography variant="h4" component="h1" gutterBottom align="center">
+        Client Project Collaboration Portal
+      </Typography>
 
-      <h2>Create New Project</h2>
-      {error && <p style={{ color: 'red' }}>Error: {error}</p>}
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '2rem' }}>
-        <input
-          type="text"
-          placeholder="Project Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-        />
-        <textarea
-          placeholder="Description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-        <label>
-          Start Date:
-          <input
+      <Typography variant="h6" sx={{ mt: 4, mb: 2 }}>
+        Create New Project
+      </Typography>
+
+      {error && (
+        <Typography color="error" sx={{ mb: 2 }}>
+          Error: {error}
+        </Typography>
+      )}
+
+      <Box component="form" onSubmit={handleSubmit}>
+        <Stack spacing={2}>
+          <TextField
+            label="Project Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            fullWidth
+          />
+          <TextField
+            label="Description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            multiline
+            rows={2}
+            fullWidth
+          />
+          <TextField
+            label="Start Date"
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
+            slotProps={{ inputLabel: { shrink: true } }}
+            fullWidth
           />
-        </label>
-        <label>
-          Deadline:
-          <input
+          <TextField
+            label="Deadline"
             type="date"
             value={deadline}
             onChange={(e) => setDeadline(e.target.value)}
+            slotProps={{ inputLabel: { shrink: true } }}
+            fullWidth
           />
-        </label>
-        <label>
-          Status:
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="Pending">Pending</option>
-            <option value="In Progress">In Progress</option>
-            <option value="Completed">Completed</option>
-          </select>
-        </label>
-        <button type="submit">Create Project</button>
-      </form>
+          <TextField
+            select
+            label="Status"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            fullWidth
+          >
+            <MenuItem value="Pending">Pending</MenuItem>
+            <MenuItem value="In Progress">In Progress</MenuItem>
+            <MenuItem value="Completed">Completed</MenuItem>
+          </TextField>
+          <Button type="submit" variant="contained" size="large">
+            Create Project
+          </Button>
+        </Stack>
+      </Box>
 
-      <h2>Projects</h2>
+      <Typography variant="h6" sx={{ mt: 5, mb: 2 }}>
+        Projects
+      </Typography>
+
       {projects.length === 0 ? (
-        <p>No projects found.</p>
+        <Typography color="text.secondary">No projects found.</Typography>
       ) : (
-        <ul>
+        <Stack spacing={2}>
           {projects.map((project) => (
-            <li key={project.id} style={{ marginBottom: '1rem' }}>
-              <strong>{project.name}</strong> — {project.status}
-              <br />
-              {project.description}
-            </li>
+            <Card key={project.id} variant="outlined">
+              <CardContent>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="subtitle1" fontWeight="bold">
+                    {project.name}
+                  </Typography>
+                  <Chip label={project.status} color={statusColor(project.status)} size="small" />
+                </Stack>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  {project.description}
+                </Typography>
+              </CardContent>
+            </Card>
           ))}
-        </ul>
+        </Stack>
       )}
-    </div>
+    </Container>
   );
 }
 
