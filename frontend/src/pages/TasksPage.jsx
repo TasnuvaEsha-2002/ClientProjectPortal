@@ -13,9 +13,11 @@ import {
 } from '@mui/material';
 
 const API_URL = 'http://localhost:5256/api/Tasks';
+const PROJECTS_API_URL = 'http://localhost:5256/api/Projects';
 
 function TasksPage() {
   const [tasks, setTasks] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -40,6 +42,9 @@ function TasksPage() {
 
   useEffect(() => {
     fetchTasks();
+    axios.get(PROJECTS_API_URL)
+      .then((response) => setProjects(response.data))
+      .catch((err) => setError(err.message));
   }, []);
 
   const handleSubmit = (e) => {
@@ -109,14 +114,19 @@ function TasksPage() {
             fullWidth
           />
           <TextField
-            label="Project ID"
-            type="number"
+            select
+            label="Project"
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
             required
             fullWidth
-            helperText="Enter the ID of the project this task belongs to"
-          />
+          >
+            {projects.map((project) => (
+              <MenuItem key={project.id} value={project.id}>
+                {project.name}
+              </MenuItem>
+            ))}
+          </TextField>
           <TextField
             select
             label="Priority"
@@ -177,7 +187,7 @@ function TasksPage() {
                   {task.description}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Project ID: {task.projectId}
+                  Project: {projects.find((p) => p.id === task.projectId)?.name || `#${task.projectId}`}
                 </Typography>
               </CardContent>
             </Card>
