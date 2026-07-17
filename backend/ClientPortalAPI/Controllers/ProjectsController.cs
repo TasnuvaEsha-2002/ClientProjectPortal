@@ -39,6 +39,7 @@ public class ProjectsController : ControllerBase
     }
 
     // POST: api/projects
+    [Authorize(Roles = "Admin,ProjectManager")]
     [HttpPost]
     public async Task<ActionResult<Project>> CreateProject(Project project)
     {
@@ -49,6 +50,7 @@ public class ProjectsController : ControllerBase
     }
 
     // PUT: api/projects/5
+    [Authorize(Roles = "Admin,ProjectManager")]
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateProject(int id, Project project)
     {

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ClientPortalAPI.Data;
@@ -38,6 +39,7 @@ public class MilestonesController : ControllerBase
     }
 
     // POST: api/milestones
+    [Authorize(Roles = "Admin,ProjectManager")]
     [HttpPost]
     public async Task<ActionResult<Milestone>> CreateMilestone(Milestone milestone)
     {
@@ -48,6 +50,7 @@ public class MilestonesController : ControllerBase
     }
 
     // PUT: api/milestones/5
+    [Authorize(Roles = "Admin,ProjectManager")]
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateMilestone(int id, Milestone milestone)
     {
@@ -63,6 +66,7 @@ public class MilestonesController : ControllerBase
     }
 
     // DELETE: api/milestones/5
+    [Authorize(Roles = "Admin,ProjectManager")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteMilestone(int id)
     {

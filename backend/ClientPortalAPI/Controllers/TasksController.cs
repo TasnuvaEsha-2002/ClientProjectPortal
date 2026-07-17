@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ClientPortalAPI.Data;
@@ -38,6 +39,7 @@ public class TasksController : ControllerBase
     }
 
     // POST: api/tasks
+    [Authorize(Roles = "Admin,ProjectManager")]
     [HttpPost]
     public async Task<ActionResult<TaskItem>> CreateTask(TaskItem task)
     {
@@ -48,6 +50,7 @@ public class TasksController : ControllerBase
     }
 
     // PUT: api/tasks/5
+    [Authorize(Roles = "Admin,ProjectManager")]
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateTask(int id, TaskItem task)
     {
@@ -63,6 +66,7 @@ public class TasksController : ControllerBase
     }
 
     // DELETE: api/tasks/5
+    [Authorize(Roles = "Admin,ProjectManager")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteTask(int id)
     {
