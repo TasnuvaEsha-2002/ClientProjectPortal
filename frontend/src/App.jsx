@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { Container, Typography, Tabs, Tab, Box, Button, Stack } from '@mui/material';
@@ -40,6 +41,14 @@ function App() {
     const stored = localStorage.getItem('user');
     return stored ? JSON.parse(stored) : null;
   });
+
+  useEffect(() => {
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    } else {
+      delete axios.defaults.headers.common['Authorization'];
+    }
+  }, [token]);
 
   const handleLogin = (newToken, newUser) => {
     localStorage.setItem('token', newToken);

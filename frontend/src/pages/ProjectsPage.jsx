@@ -10,7 +10,9 @@ import {
   Stack,
   Chip,
   Box,
+  IconButton,
 } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
 
 const API_URL = 'http://localhost:5256/api/Projects';
 
@@ -67,6 +69,18 @@ function ProjectsPage() {
       });
   };
 
+  const handleDelete = (id) => {
+    axios.delete(`${API_URL}/${id}`)
+      .then(() => fetchProjects())
+      .catch((err) => {
+        if (err.response?.status === 401 || err.response?.status === 403) {
+          setError("You don't have permission to delete projects.");
+        } else {
+          setError(err.message);
+        }
+      });
+  };
+
   const statusColor = (status) => {
     if (status === 'Completed') return 'success';
     if (status === 'In Progress') return 'warning';
@@ -83,7 +97,7 @@ function ProjectsPage() {
 
       {error && (
         <Typography color="error" sx={{ mb: 2 }}>
-          Error: {error}
+          {error}
         </Typography>
       )}
 
@@ -152,7 +166,12 @@ function ProjectsPage() {
                   <Typography variant="subtitle1" fontWeight="bold">
                     {project.name}
                   </Typography>
-                  <Chip label={project.status} color={statusColor(project.status)} size="small" />
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Chip label={project.status} color={statusColor(project.status)} size="small" />
+                    <IconButton size="small" onClick={() => handleDelete(project.id)} color="error">
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
                 </Stack>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                   {project.description}

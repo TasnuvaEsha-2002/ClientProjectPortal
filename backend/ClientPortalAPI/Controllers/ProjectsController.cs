@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ClientPortalAPI.Data;
@@ -63,6 +64,7 @@ public class ProjectsController : ControllerBase
     }
 
     // DELETE: api/projects/5
+    [Authorize(Roles = "Admin,ProjectManager")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteProject(int id)
     {
