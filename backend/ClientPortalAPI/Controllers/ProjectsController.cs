@@ -189,4 +189,95 @@ public class ProjectsController : ControllerBase
 
         return Ok(result);
     }
+    // POST: api/projects/impact-analysis
+    // This is our second AI-assisted feature: Requirement Change Impact Analysis.
+    // The Project Manager submits a plain-text requirement, and we estimate its impact
+    // by checking which keywords match existing tasks/modules.
+    [Authorize(Roles = "Admin,ProjectManager")]
+    [HttpPost("impact-analysis")]
+    public async Task<ActionResult<ImpactAnalysisDto>> AnalyzeRequirementChange(RequirementChangeDto request)
+    {
+        var project = await _context.Projects.FindAsync(request.ProjectId);
+        if (project == null)
+        {
+            return NotFound("Project not found.");
+        }
+
+        var tasks = await _context.Tasks
+            .Where(t => t.ProjectId == request.ProjectId)
+            .ToListAsync();
+
+        string text = request.RequirementText.ToLower();
+        var affectedAreas = new List<string>();
+
+        // Simple keyword-based matching to detect which areas of the system
+        // this requirement is likely to affect. This is a practical,
+        // rule-based approach (not a trained ML model) suitable for a
+        // decision-support tool within this project's scope.
+        var keywordMap = new Dictionary<string, string>
+        {
+            { "login", "Authentication Module" },
+            { "auth", "Authentication Module" },
+            { "password", "Authentication Module" },
+            { "two-factor", "Authentication Module" },
+            { "2fa", "Authentication Module" },
+            { "profile", "User Profile Module" },
+            { "document", "Document Management Module" },
+            { "file", "Document Management Module" },
+            { "upload", "Document Management Module" },
+            { "notification", "Notification Module" },
+            { "email", "Notification Module" },
+            { "report", "Reporting Module" },
+            { "dashboard", "Dashboard Module" },
+            { "payment", "Billing Module" },
+            { "chat", "Communication Module" },
+            { "comment", "Communication Module" },
+            { "calendar", "Calendar Module" },
+            { "meeting", "Meeting Management Module" },
+        };
+
+        foreach (var pair in keywordMap)
+        {
+            if (text.Contains(pair.Key) && !affectedAreas.Contains(pair.Value))
+            {
+                affectedAreas.Add(pair.Value);
+            }
+        }
+
+        // If no known keyword matched, mark it as a general/custom feature
+        if (affectedAreas.Count == 0)
+        {
+            affectedAreas.Add("General / Custom Feature (no existing module matched)");
+        }
+
+        // Estimate new tasks: roughly 2 tasks per affected area
+        int estimatedNewTasks = affectedAreas.Count * 2;
+
+        // Estimate delay: more affected areas and more existing tasks = more delay
+        int estimatedDelayDays = affectedAreas.Count * 2 + (tasks.Count / 5);
+
+        // Determine risk level based on how many areas are affected
+        string riskLevel = affectedAreas.Count >= 3 ? "High"
+                          : affectedAreas.Count == 2 ? "Medium"
+                          : "Low";
+
+        string recommendation = riskLevel switch
+        {
+            "High" => "This change affects multiple modules. Consider splitting it into phases and reviewing with the full team before implementation.",
+            "Medium" => "This change affects a couple of modules. Plan it into the next sprint after completing current high-priority tasks.",
+            _ => "This is a relatively isolated change. It can likely be implemented alongside current work without major disruption."
+        };
+
+        var result = new ImpactAnalysisDto
+        {
+            RequirementText = request.RequirementText,
+            AffectedAreas = affectedAreas,
+            EstimatedNewTasks = estimatedNewTasks,
+            EstimatedDelayDays = estimatedDelayDays,
+            RiskLevel = riskLevel,
+            Recommendation = recommendation
+        };
+
+        return Ok(result);
+    }
 }

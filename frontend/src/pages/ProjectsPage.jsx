@@ -21,6 +21,7 @@ import {
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AssessmentIcon from '@mui/icons-material/Assessment';
+import PsychologyIcon from '@mui/icons-material/Psychology';
 
 // Base URL for the Projects API
 const API_URL = 'http://localhost:5256/api/Projects';
@@ -40,8 +41,13 @@ function ProjectsPage() {
 
   // Stores the AI-assisted risk analysis result for the currently viewed project
   const [riskData, setRiskData] = useState(null);
-  // Controls whether the risk analysis popup (dialog) is open or closed
   const [riskDialogOpen, setRiskDialogOpen] = useState(false);
+
+  // ---- Requirement Change Impact Analysis states ----
+  const [impactProjectId, setImpactProjectId] = useState('');
+  const [requirementText, setRequirementText] = useState('');
+  const [impactData, setImpactData] = useState(null);
+  const [impactDialogOpen, setImpactDialogOpen] = useState(false);
 
   // Fetches the list of projects from the backend
   const fetchProjects = () => {
@@ -56,7 +62,6 @@ function ProjectsPage() {
       });
   };
 
-  // Runs once when the page first loads
   useEffect(() => {
     fetchProjects();
   }, []);
@@ -76,8 +81,7 @@ function ProjectsPage() {
 
     axios.post(API_URL, newProject)
       .then(() => {
-        fetchProjects(); // refresh the list after creating
-        // reset form fields
+        fetchProjects();
         setName('');
         setDescription('');
         setStartDate('');
@@ -102,8 +106,7 @@ function ProjectsPage() {
       });
   };
 
-  // Fetches AI-assisted risk analysis for a specific project
-  // and opens a popup dialog to display the results
+  // Fetches AI-assisted deadline risk analysis for a specific project
   const handleCheckRisk = (projectId) => {
     axios.get(`${API_URL}/${projectId}/risk-analysis`)
       .then((response) => {
@@ -115,6 +118,27 @@ function ProjectsPage() {
       });
   };
 
+  // Submits a new requirement for AI-assisted impact analysis
+  const handleAnalyzeImpact = (e) => {
+    e.preventDefault();
+
+    axios.post(`${API_URL}/impact-analysis`, {
+      projectId: Number(impactProjectId),
+      requirementText,
+    })
+      .then((response) => {
+        setImpactData(response.data);
+        setImpactDialogOpen(true);
+      })
+      .catch((err) => {
+        if (err.response?.status === 401 || err.response?.status === 403) {
+          setError("You don't have permission to run impact analysis.");
+        } else {
+          setError(err.message);
+        }
+      });
+  };
+
   // Returns a color for the status chip based on project status
   const statusColor = (status) => {
     if (status === 'Completed') return 'success';
@@ -122,7 +146,7 @@ function ProjectsPage() {
     return 'default';
   };
 
-  // Returns a color for the risk level chip inside the popup
+  // Returns a color for risk level chips (used in both dialogs)
   const riskColor = (level) => {
     if (level === 'High') return 'error';
     if (level === 'Medium') return 'warning';
@@ -194,6 +218,43 @@ function ProjectsPage() {
         </Stack>
       </Box>
 
+      {/* ---------- REQUIREMENT CHANGE IMPACT ANALYSIS FORM ---------- */}
+      <Typography variant="h6" sx={{ mt: 5, mb: 2 }}>
+        Analyze Requirement Change (AI-Assisted)
+      </Typography>
+
+      <Box component="form" onSubmit={handleAnalyzeImpact}>
+        <Stack spacing={2}>
+          <TextField
+            select
+            label="Project"
+            value={impactProjectId}
+            onChange={(e) => setImpactProjectId(e.target.value)}
+            required
+            fullWidth
+          >
+            {projects.map((project) => (
+              <MenuItem key={project.id} value={project.id}>
+                {project.name}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            label="Describe the new/changed requirement"
+            value={requirementText}
+            onChange={(e) => setRequirementText(e.target.value)}
+            multiline
+            rows={2}
+            required
+            fullWidth
+            placeholder="e.g. We want to add two-factor authentication to the login system"
+          />
+          <Button type="submit" variant="outlined" size="large" startIcon={<PsychologyIcon />}>
+            Analyze Impact
+          </Button>
+        </Stack>
+      </Box>
+
       {/* ---------- PROJECT LIST ---------- */}
       <Typography variant="h6" sx={{ mt: 5, mb: 2 }}>
         Projects
@@ -212,8 +273,6 @@ function ProjectsPage() {
                   </Typography>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Chip label={project.status} color={statusColor(project.status)} size="small" />
-
-                    {/* Button to trigger AI-assisted risk analysis */}
                     <IconButton
                       size="small"
                       onClick={() => handleCheckRisk(project.id)}
@@ -222,8 +281,6 @@ function ProjectsPage() {
                     >
                       <AssessmentIcon fontSize="small" />
                     </IconButton>
-
-                    {/* Button to delete the project */}
                     <IconButton
                       size="small"
                       onClick={() => handleDelete(project.id)}
@@ -244,12 +301,7 @@ function ProjectsPage() {
       )}
 
       {/* ---------- RISK ANALYSIS POPUP DIALOG ---------- */}
-      <Dialog
-        open={riskDialogOpen}
-        onClose={() => setRiskDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
+      <Dialog open={riskDialogOpen} onClose={() => setRiskDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>
           Deadline Risk Analysis {riskData && `- ${riskData.projectName}`}
         </DialogTitle>
@@ -259,11 +311,7 @@ function ProjectsPage() {
               <Typography variant="h6" sx={{ mt: 1 }}>
                 Risk Score: {riskData.riskScore}%
               </Typography>
-              <Chip
-                label={riskData.riskLevel}
-                color={riskColor(riskData.riskLevel)}
-                sx={{ mt: 1, mb: 2 }}
-              />
+              <Chip label={riskData.riskLevel} color={riskColor(riskData.riskLevel)} sx={{ mt: 1, mb: 2 }} />
 
               <Typography variant="subtitle2">Reasons:</Typography>
               <List dense>
@@ -287,6 +335,49 @@ function ProjectsPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setRiskDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ---------- IMPACT ANALYSIS POPUP DIALOG ---------- */}
+      <Dialog open={impactDialogOpen} onClose={() => setImpactDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Requirement Change Impact Analysis</DialogTitle>
+        <DialogContent>
+          {impactData && (
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                "{impactData.requirementText}"
+              </Typography>
+
+              <Typography variant="subtitle2">Affected Areas:</Typography>
+              <List dense>
+                {impactData.affectedAreas.map((area, index) => (
+                  <ListItem key={index}>
+                    <ListItemText primary={`• ${area}`} />
+                  </ListItem>
+                ))}
+              </List>
+
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                Estimated New Tasks: <strong>{impactData.estimatedNewTasks}</strong>
+              </Typography>
+              <Typography variant="body2">
+                Estimated Delay: <strong>{impactData.estimatedDelayDays} day(s)</strong>
+              </Typography>
+
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                Risk Level:{' '}
+                <Chip label={impactData.riskLevel} color={riskColor(impactData.riskLevel)} size="small" />
+              </Typography>
+
+              <Typography variant="subtitle2" sx={{ mt: 2 }}>
+                Recommendation:
+              </Typography>
+              <Typography variant="body2">{impactData.recommendation}</Typography>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setImpactDialogOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
     </>
