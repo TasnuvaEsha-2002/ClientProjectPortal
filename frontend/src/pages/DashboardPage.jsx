@@ -8,6 +8,7 @@ import FolderIcon from '@mui/icons-material/Folder';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import FlagIcon from '@mui/icons-material/Flag';
 import WarningIcon from '@mui/icons-material/Warning';
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 function DashboardPage() {
   const [projects, setProjects] = useState([]);
@@ -37,6 +38,7 @@ function DashboardPage() {
 
   const activeProjects = projects.filter((p) => p.status === 'In Progress').length;
   const completedProjects = projects.filter((p) => p.status === 'Completed').length;
+  const pendingCount = projects.filter((p) => p.status === 'Pending').length;
 
   // A task is "overdue" if its due date has passed and it's not marked Completed
   const overdueTasks = tasks.filter(
@@ -47,6 +49,16 @@ function DashboardPage() {
   const pendingApprovals = milestones.filter(
     (m) => m.status === 'Completed' && !m.clientApproved
   ).length;
+
+  // Prepare data for the project status pie chart
+  const chartData = [
+    { name: 'Pending', value: pendingCount },
+    { name: 'In Progress', value: activeProjects },
+    { name: 'Completed', value: completedProjects },
+  ].filter((item) => item.value > 0); // hide empty slices
+
+  // Colors for each pie slice, matching our theme
+  const COLORS = ['#9e9e9e', '#F5A623', '#2E7D32'];
 
   // A small reusable card component for each stat
   const StatCard = ({ icon, label, value, color }) => (
@@ -133,6 +145,38 @@ function DashboardPage() {
           />
         </Grid>
       </Grid>
+
+      {/* ---------- PROJECT STATUS CHART ---------- */}
+      {chartData.length > 0 && (
+        <>
+          <Typography variant="h6" sx={{ mt: 5, mb: 2 }}>
+            Project Status Breakdown
+          </Typography>
+          <Card variant="outlined">
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={chartData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={100}
+                    label
+                  >
+                    {chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </>
+      )}
     </>
   );
 }
