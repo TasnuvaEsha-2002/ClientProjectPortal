@@ -8,7 +8,19 @@ import FolderIcon from '@mui/icons-material/Folder';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import FlagIcon from '@mui/icons-material/Flag';
 import WarningIcon from '@mui/icons-material/Warning';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+} from 'recharts';
 
 function DashboardPage() {
   const [projects, setProjects] = useState([]);
@@ -59,6 +71,13 @@ function DashboardPage() {
 
   // Colors for each pie slice, matching our theme
   const COLORS = ['#9e9e9e', '#F5A623', '#2E7D32'];
+
+  // Prepare data for the task status bar chart
+  const taskStatusData = [
+    { status: 'Not Started', count: tasks.filter((t) => t.status === 'Not Started').length },
+    { status: 'In Progress', count: tasks.filter((t) => t.status === 'In Progress').length },
+    { status: 'Completed', count: tasks.filter((t) => t.status === 'Completed').length },
+  ];
 
   // A small reusable card component for each stat
   const StatCard = ({ icon, label, value, color }) => (
@@ -172,6 +191,28 @@ function DashboardPage() {
                   <Tooltip />
                   <Legend />
                 </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {/* ---------- TASK STATUS CHART ---------- */}
+      {tasks.length > 0 && (
+        <>
+          <Typography variant="h6" sx={{ mt: 5, mb: 2 }}>
+            Task Status Overview
+          </Typography>
+          <Card variant="outlined">
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={taskStatusData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="status" />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="count" fill="#2E5EAA" radius={[6, 6, 0, 0]} />
+                </BarChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>

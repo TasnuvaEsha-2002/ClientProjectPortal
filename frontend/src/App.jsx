@@ -10,6 +10,7 @@ import TasksPage from './pages/TasksPage';
 import MilestonesPage from './pages/MilestonesPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import DocumentsPage from './pages/DocumentsPage';
 
 // Top navigation bar shown only when a user is logged in.
 // Displays tabs for each main section plus the logged-in user's info and a logout button.
@@ -23,6 +24,7 @@ function Navigation({ user, onLogout }) {
         <Tab label="Projects" value="/projects" component={Link} to="/projects" />
         <Tab label="Tasks" value="/tasks" component={Link} to="/tasks" />
         <Tab label="Milestones" value="/milestones" component={Link} to="/milestones" />
+        <Tab label="Documents" value="/documents" component={Link} to="/documents" />
       </Tabs>
       <Stack direction="row" spacing={2} alignItems="center">
         <Typography variant="body2">
@@ -127,6 +129,14 @@ function App() {
               <ProtectedRoute user={user}>
                 <MilestonesPage />
               </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/documents"
+            element={
+             <ProtectedRoute user={user}>
+               <DocumentsPage />
+             </ProtectedRoute>
             }
           />
         </Routes>
