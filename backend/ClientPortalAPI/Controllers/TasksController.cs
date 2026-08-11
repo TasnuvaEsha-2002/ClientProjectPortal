@@ -107,4 +107,30 @@ public class TasksController : ControllerBase
 
         return NoContent();
     }
+    // PATCH: api/tasks/5/progress
+    // Lightweight endpoint for Team Members: allows updating ONLY the
+    // completion percentage of a task.
+    [Authorize]
+    [HttpPatch("{id}/progress")]
+    public async Task<IActionResult> UpdateTaskProgress(int id, [FromBody] int percentage)
+    {
+        var task = await _context.Tasks.FindAsync(id);
+        if (task == null)
+        {
+            return NotFound();
+        }
+
+        // Keep the value within a sensible 0-100 range
+        task.CompletionPercentage = Math.Clamp(percentage, 0, 100);
+
+        // If progress hits 100%, automatically mark the task Completed too
+        if (task.CompletionPercentage == 100)
+        {
+            task.Status = "Completed";
+        }
+
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
 }

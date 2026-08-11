@@ -1,6 +1,7 @@
 // Task Management page.
 // - Admin/ProjectManager: can create tasks and assign them to a Team Member
-// - Team Member: sees all tasks (read-only, except their own task's status)
+// - Team Member: sees all tasks (read-only, except updating their own task's
+//   status/progress, and commenting on any task they're viewing)
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
@@ -14,12 +15,19 @@ import {
   Chip,
   Box,
   Select,
+  LinearProgress,
+  Collapse,
+  IconButton,
 } from '@mui/material';
+import CommentIcon from '@mui/icons-material/Comment';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 
 const API_URL = 'http://localhost:5256/api/Tasks';
 const PROJECTS_API_URL = 'http://localhost:5256/api/Projects';
 const TEAM_MEMBERS_API_URL = 'http://localhost:5256/api/Auth/team-members';
 const USERS_BRIEF_API_URL = 'http://localhost:5256/api/Auth/users-brief';
+const COMMENTS_API_URL = 'http://localhost:5256/api/TaskComments';
 
 function TasksPage({ currentUser }) {
   const [tasks, setTasks] = useState([]);
@@ -37,7 +45,13 @@ function TasksPage({ currentUser }) {
   const [projectId, setProjectId] = useState('');
   const [assignedUserId, setAssignedUserId] = useState('');
 
-  // Only Admin/ProjectManager can create tasks and assign them
+  // Tracks which task's comment section is currently expanded
+  const [expandedTaskId, setExpandedTaskId] = useState(null);
+  // Stores fetched comments per task, keyed by task ID
+  const [commentsByTask, setCommentsByTask] = useState({});
+  // Stores the text currently being typed for each task's new comment
+  const [newCommentText, setNewCommentText] = useState({});
+
   const canManageTasks = currentUser?.role === 'Admin' || currentUser?.role === 'ProjectManager';
 
   const fetchTasks = () => {
@@ -58,12 +72,10 @@ function TasksPage({ currentUser }) {
       .then((response) => setProjects(response.data))
       .catch((err) => setError(err.message));
 
-    // Everyone needs the full user list to display assigned names properly
     axios.get(USERS_BRIEF_API_URL)
       .then((response) => setAllUsers(response.data))
       .catch(() => {});
 
-    // Only Admin/ProjectManager need the dropdown-ready team member list
     if (canManageTasks) {
       axios.get(TEAM_MEMBERS_API_URL)
         .then((response) => setTeamMembers(response.data))
@@ -102,7 +114,6 @@ function TasksPage({ currentUser }) {
       });
   };
 
-  // Lightweight status update — used by Team Members on their own assigned tasks
   const handleStatusChange = (taskId, newStatus) => {
     axios.patch(`${API_URL}/${taskId}/status`, JSON.stringify(newStatus), {
       headers: { 'Content-Type': 'application/json' },
@@ -111,7 +122,46 @@ function TasksPage({ currentUser }) {
       .catch((err) => setError(err.message));
   };
 
-  // Looks up a user's display name from their ID
+  // Updates progress; the slider commits the change only when the user releases it
+  const handleProgressChange = (taskId, newProgress) => {
+    axios.patch(`${API_URL}/${taskId}/progress`, JSON.stringify(newProgress), {
+      headers: { 'Content-Type': 'application/json' },
+    })
+      .then(() => fetchTasks())
+      .catch((err) => setError(err.message));
+  };
+
+  // Fetches comments for a task and toggles its expanded view
+  const toggleComments = (taskId) => {
+    if (expandedTaskId === taskId) {
+      setExpandedTaskId(null);
+      return;
+    }
+
+    setExpandedTaskId(taskId);
+    axios.get(`${COMMENTS_API_URL}?taskId=${taskId}`)
+      .then((response) => {
+        setCommentsByTask((prev) => ({ ...prev, [taskId]: response.data }));
+      })
+      .catch(() => {});
+  };
+
+  const handleAddComment = (taskId) => {
+    const text = newCommentText[taskId];
+    if (!text || !text.trim()) return;
+
+    axios.post(COMMENTS_API_URL, { taskId, text })
+      .then(() => {
+        // Refresh just this task's comments and clear the input
+        axios.get(`${COMMENTS_API_URL}?taskId=${taskId}`)
+          .then((response) => {
+            setCommentsByTask((prev) => ({ ...prev, [taskId]: response.data }));
+          });
+        setNewCommentText((prev) => ({ ...prev, [taskId]: '' }));
+      })
+      .catch((err) => setError(err.message));
+  };
+
   const getUserName = (userId) => {
     const found = allUsers.find((u) => u.id === userId);
     return found ? found.fullName : `User #${userId}`;
@@ -142,13 +192,7 @@ function TasksPage({ currentUser }) {
 
           <Box component="form" onSubmit={handleSubmit}>
             <Stack spacing={2}>
-              <TextField
-                label="Task Title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                required
-                fullWidth
-              />
+              <TextField label="Task Title" value={title} onChange={(e) => setTitle(e.target.value)} required fullWidth />
               <TextField
                 label="Description"
                 value={description}
@@ -157,14 +201,7 @@ function TasksPage({ currentUser }) {
                 rows={2}
                 fullWidth
               />
-              <TextField
-                select
-                label="Project"
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-                required
-                fullWidth
-              >
+              <TextField select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)} required fullWidth>
                 {projects.map((project) => (
                   <MenuItem key={project.id} value={project.id}>
                     {project.name}
@@ -188,24 +225,12 @@ function TasksPage({ currentUser }) {
                   </MenuItem>
                 ))}
               </TextField>
-              <TextField
-                select
-                label="Priority"
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-                fullWidth
-              >
+              <TextField select label="Priority" value={priority} onChange={(e) => setPriority(e.target.value)} fullWidth>
                 <MenuItem value="Low">Low</MenuItem>
                 <MenuItem value="Medium">Medium</MenuItem>
                 <MenuItem value="High">High</MenuItem>
               </TextField>
-              <TextField
-                select
-                label="Status"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                fullWidth
-              >
+              <TextField select label="Status" value={status} onChange={(e) => setStatus(e.target.value)} fullWidth>
                 <MenuItem value="Not Started">Not Started</MenuItem>
                 <MenuItem value="In Progress">In Progress</MenuItem>
                 <MenuItem value="Completed">Completed</MenuItem>
@@ -237,6 +262,8 @@ function TasksPage({ currentUser }) {
         <Stack spacing={2}>
           {tasks.map((task) => {
             const isMyTask = task.assignedUserId === currentUser?.id;
+            const isExpanded = expandedTaskId === task.id;
+            const comments = commentsByTask[task.id] || [];
 
             return (
               <Card key={task.id} variant="outlined">
@@ -247,8 +274,6 @@ function TasksPage({ currentUser }) {
                     </Typography>
                     <Stack direction="row" spacing={1} alignItems="center">
                       <Chip label={task.priority} color={priorityColor(task.priority)} size="small" />
-
-                      {/* Only the assigned Team Member can change status from the task list */}
                       {isMyTask ? (
                         <Select
                           size="small"
@@ -264,6 +289,7 @@ function TasksPage({ currentUser }) {
                       )}
                     </Stack>
                   </Stack>
+
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                     {task.description}
                   </Typography>
@@ -273,6 +299,78 @@ function TasksPage({ currentUser }) {
                   <Typography variant="caption" color="text.secondary" display="block">
                     Assigned to: {task.assignedUserId ? (isMyTask ? 'You' : getUserName(task.assignedUserId)) : 'Unassigned'}
                   </Typography>
+
+                  {/* ---------- PROGRESS BAR ---------- */}
+                  <Box sx={{ mt: 2 }}>
+                    <Stack direction="row" justifyContent="space-between">
+                      <Typography variant="caption">Progress</Typography>
+                      <Typography variant="caption">{task.completionPercentage}%</Typography>
+                    </Stack>
+                    <LinearProgress variant="determinate" value={task.completionPercentage} sx={{ borderRadius: 1, height: 6 }} />
+                    {isMyTask && (
+                      <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                        {[0, 25, 50, 75, 100].map((val) => (
+                          <Button
+                            key={val}
+                            size="small"
+                            variant={task.completionPercentage === val ? 'contained' : 'outlined'}
+                            onClick={() => handleProgressChange(task.id, val)}
+                          >
+                            {val}%
+                          </Button>
+                        ))}
+                      </Stack>
+                    )}
+                  </Box>
+
+                  {/* ---------- COMMENTS TOGGLE ---------- */}
+                  <Button
+                    size="small"
+                    startIcon={<CommentIcon />}
+                    endIcon={isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                    onClick={() => toggleComments(task.id)}
+                    sx={{ mt: 2 }}
+                  >
+                    Comments
+                  </Button>
+
+                  <Collapse in={isExpanded}>
+                    <Box sx={{ mt: 2, pl: 1, borderLeft: '2px solid', borderColor: 'divider' }}>
+                      {comments.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary">
+                          No comments yet.
+                        </Typography>
+                      ) : (
+                        <Stack spacing={1} sx={{ mb: 2 }}>
+                          {comments.map((comment) => (
+                            <Box key={comment.id}>
+                              <Typography variant="body2">
+                                <strong>{comment.userName}</strong>: {comment.text}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {new Date(comment.createdAt).toLocaleString()}
+                              </Typography>
+                            </Box>
+                          ))}
+                        </Stack>
+                      )}
+
+                      <Stack direction="row" spacing={1}>
+                        <TextField
+                          size="small"
+                          fullWidth
+                          placeholder="Write a comment..."
+                          value={newCommentText[task.id] || ''}
+                          onChange={(e) =>
+                            setNewCommentText((prev) => ({ ...prev, [task.id]: e.target.value }))
+                          }
+                        />
+                        <Button variant="contained" onClick={() => handleAddComment(task.id)}>
+                          Send
+                        </Button>
+                      </Stack>
+                    </Box>
+                  </Collapse>
                 </CardContent>
               </Card>
             );

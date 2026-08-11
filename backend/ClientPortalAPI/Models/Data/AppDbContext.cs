@@ -14,6 +14,7 @@ public class AppDbContext : DbContext
     public DbSet<Milestone> Milestones { get; set; }
     public DbSet<User> Users { get; set; }
     public DbSet<ProjectDocument> Documents { get; set; }
+    public DbSet<TaskComment> TaskComments { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -27,5 +28,18 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(t => t.AssignedUserId)
             .OnDelete(DeleteBehavior.SetNull); // if the user is deleted, just unassign the task instead of deleting it
+
+        // Configure TaskComment relationships
+        modelBuilder.Entity<TaskComment>()
+            .HasOne(c => c.User)
+            .WithMany()
+            .HasForeignKey(c => c.UserId)
+            .OnDelete(DeleteBehavior.Restrict); // don't allow deleting a user who has left comments
+
+        modelBuilder.Entity<TaskComment>()
+            .HasOne(c => c.Task)
+            .WithMany()
+            .HasForeignKey(c => c.TaskId)
+            .OnDelete(DeleteBehavior.Cascade); // deleting a task removes its comments too
     }
 }
