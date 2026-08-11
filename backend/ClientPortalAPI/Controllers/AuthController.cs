@@ -87,6 +87,37 @@ public class AuthController : ControllerBase
         return Ok(pendingUsers);
     }
 
+    // GET: api/auth/users-brief
+    // Returns basic info (id, fullName, role) for all approved users.
+    // Accessible to ANY logged-in user — used to display names instead of raw IDs
+    // wherever a task/project shows an assigned user.
+    [Authorize]
+    [HttpGet("users-brief")]
+    public async Task<ActionResult<IEnumerable<object>>> GetUsersBrief()
+    {
+        var users = await _context.Users
+            .Where(u => u.IsApproved)
+            .Select(u => new { u.Id, u.FullName, u.Role })
+            .ToListAsync();
+
+        return Ok(users);
+    }
+
+    // GET: api/auth/team-members
+    // Returns all approved users with the TeamMember role,
+    // used to populate assignment dropdowns when creating/editing tasks.
+    [Authorize(Roles = "Admin,ProjectManager")]
+    [HttpGet("team-members")]
+    public async Task<ActionResult<IEnumerable<object>>> GetTeamMembers()
+    {
+        var teamMembers = await _context.Users
+            .Where(u => u.Role == "TeamMember" && u.IsApproved)
+            .Select(u => new { u.Id, u.FullName, u.Email })
+            .ToListAsync();
+
+        return Ok(teamMembers);
+    }
+
     // PUT: api/auth/approve/5
     // Approves a specific user, allowing them to log in.
     // Optionally lets the Admin correct the user's role at the same time.

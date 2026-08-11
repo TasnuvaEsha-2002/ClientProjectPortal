@@ -111,7 +111,7 @@ function App() {
             path="/projects"
             element={
               <ProtectedRoute user={user}>
-                <ProjectsPage />
+                <ProjectsPage currentUser={user} />
               </ProtectedRoute>
             }
           />
@@ -119,7 +119,7 @@ function App() {
             path="/tasks"
             element={
               <ProtectedRoute user={user}>
-                <TasksPage />
+                <TasksPage currentUser={user} />
               </ProtectedRoute>
             }
           />

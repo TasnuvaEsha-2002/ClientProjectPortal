@@ -23,33 +23,30 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import PsychologyIcon from '@mui/icons-material/Psychology';
 
-// Base URL for the Projects API
 const API_URL = 'http://localhost:5256/api/Projects';
 
-function ProjectsPage() {
-  // Holds the list of all projects fetched from the backend
+function ProjectsPage({ currentUser }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Form field states for creating a new project
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [startDate, setStartDate] = useState('');
   const [deadline, setDeadline] = useState('');
   const [status, setStatus] = useState('Pending');
 
-  // Stores the AI-assisted risk analysis result for the currently viewed project
   const [riskData, setRiskData] = useState(null);
   const [riskDialogOpen, setRiskDialogOpen] = useState(false);
 
-  // ---- Requirement Change Impact Analysis states ----
   const [impactProjectId, setImpactProjectId] = useState('');
   const [requirementText, setRequirementText] = useState('');
   const [impactData, setImpactData] = useState(null);
   const [impactDialogOpen, setImpactDialogOpen] = useState(false);
 
-  // Fetches the list of projects from the backend
+  // Only Admin/ProjectManager can create, delete, or run impact analysis
+  const canManageProjects = currentUser?.role === 'Admin' || currentUser?.role === 'ProjectManager';
+
   const fetchProjects = () => {
     axios.get(API_URL)
       .then((response) => {
@@ -66,7 +63,6 @@ function ProjectsPage() {
     fetchProjects();
   }, []);
 
-  // Handles the "Create Project" form submission
   const handleSubmit = (e) => {
     e.preventDefault();
 
@@ -93,7 +89,6 @@ function ProjectsPage() {
       });
   };
 
-  // Handles deleting a project (only Admin/ProjectManager allowed by backend)
   const handleDelete = (id) => {
     axios.delete(`${API_URL}/${id}`)
       .then(() => fetchProjects())
@@ -106,7 +101,6 @@ function ProjectsPage() {
       });
   };
 
-  // Fetches AI-assisted deadline risk analysis for a specific project
   const handleCheckRisk = (projectId) => {
     axios.get(`${API_URL}/${projectId}/risk-analysis`)
       .then((response) => {
@@ -118,7 +112,6 @@ function ProjectsPage() {
       });
   };
 
-  // Submits a new requirement for AI-assisted impact analysis
   const handleAnalyzeImpact = (e) => {
     e.preventDefault();
 
@@ -139,14 +132,12 @@ function ProjectsPage() {
       });
   };
 
-  // Returns a color for the status chip based on project status
   const statusColor = (status) => {
     if (status === 'Completed') return 'success';
     if (status === 'In Progress') return 'warning';
     return 'default';
   };
 
-  // Returns a color for risk level chips (used in both dialogs)
   const riskColor = (level) => {
     if (level === 'High') return 'error';
     if (level === 'Medium') return 'warning';
@@ -157,103 +148,101 @@ function ProjectsPage() {
 
   return (
     <>
-      {/* ---------- CREATE PROJECT FORM ---------- */}
-      <Typography variant="h6" sx={{ mt: 4, mb: 2 }}>
-        Create New Project
-      </Typography>
+      {/* ---------- CREATE PROJECT FORM (Admin/ProjectManager only) ---------- */}
+      {canManageProjects && (
+        <>
+          <Typography variant="h6" sx={{ mt: 4, mb: 2 }}>
+            Create New Project
+          </Typography>
 
-      {error && (
+          {error && (
+            <Typography color="error" sx={{ mb: 2 }}>
+              {error}
+            </Typography>
+          )}
+
+          <Box component="form" onSubmit={handleSubmit}>
+            <Stack spacing={2}>
+              <TextField label="Project Name" value={name} onChange={(e) => setName(e.target.value)} required fullWidth />
+              <TextField
+                label="Description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                multiline
+                rows={2}
+                fullWidth
+              />
+              <TextField
+                label="Start Date"
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+                fullWidth
+              />
+              <TextField
+                label="Deadline"
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+                fullWidth
+              />
+              <TextField select label="Status" value={status} onChange={(e) => setStatus(e.target.value)} fullWidth>
+                <MenuItem value="Pending">Pending</MenuItem>
+                <MenuItem value="In Progress">In Progress</MenuItem>
+                <MenuItem value="Completed">Completed</MenuItem>
+              </TextField>
+              <Button type="submit" variant="contained" size="large">
+                Create Project
+              </Button>
+            </Stack>
+          </Box>
+
+          {/* ---------- REQUIREMENT CHANGE IMPACT ANALYSIS FORM ---------- */}
+          <Typography variant="h6" sx={{ mt: 5, mb: 2 }}>
+            Analyze Requirement Change (AI-Assisted)
+          </Typography>
+
+          <Box component="form" onSubmit={handleAnalyzeImpact}>
+            <Stack spacing={2}>
+              <TextField
+                select
+                label="Project"
+                value={impactProjectId}
+                onChange={(e) => setImpactProjectId(e.target.value)}
+                required
+                fullWidth
+              >
+                {projects.map((project) => (
+                  <MenuItem key={project.id} value={project.id}>
+                    {project.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                label="Describe the new/changed requirement"
+                value={requirementText}
+                onChange={(e) => setRequirementText(e.target.value)}
+                multiline
+                rows={2}
+                required
+                fullWidth
+                placeholder="e.g. We want to add two-factor authentication to the login system"
+              />
+              <Button type="submit" variant="outlined" size="large" startIcon={<PsychologyIcon />}>
+                Analyze Impact
+              </Button>
+            </Stack>
+          </Box>
+        </>
+      )}
+
+      {!canManageProjects && error && (
         <Typography color="error" sx={{ mb: 2 }}>
           {error}
         </Typography>
       )}
-
-      <Box component="form" onSubmit={handleSubmit}>
-        <Stack spacing={2}>
-          <TextField
-            label="Project Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            fullWidth
-          />
-          <TextField
-            label="Description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            multiline
-            rows={2}
-            fullWidth
-          />
-          <TextField
-            label="Start Date"
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            slotProps={{ inputLabel: { shrink: true } }}
-            fullWidth
-          />
-          <TextField
-            label="Deadline"
-            type="date"
-            value={deadline}
-            onChange={(e) => setDeadline(e.target.value)}
-            slotProps={{ inputLabel: { shrink: true } }}
-            fullWidth
-          />
-          <TextField
-            select
-            label="Status"
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            fullWidth
-          >
-            <MenuItem value="Pending">Pending</MenuItem>
-            <MenuItem value="In Progress">In Progress</MenuItem>
-            <MenuItem value="Completed">Completed</MenuItem>
-          </TextField>
-          <Button type="submit" variant="contained" size="large">
-            Create Project
-          </Button>
-        </Stack>
-      </Box>
-
-      {/* ---------- REQUIREMENT CHANGE IMPACT ANALYSIS FORM ---------- */}
-      <Typography variant="h6" sx={{ mt: 5, mb: 2 }}>
-        Analyze Requirement Change (AI-Assisted)
-      </Typography>
-
-      <Box component="form" onSubmit={handleAnalyzeImpact}>
-        <Stack spacing={2}>
-          <TextField
-            select
-            label="Project"
-            value={impactProjectId}
-            onChange={(e) => setImpactProjectId(e.target.value)}
-            required
-            fullWidth
-          >
-            {projects.map((project) => (
-              <MenuItem key={project.id} value={project.id}>
-                {project.name}
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            label="Describe the new/changed requirement"
-            value={requirementText}
-            onChange={(e) => setRequirementText(e.target.value)}
-            multiline
-            rows={2}
-            required
-            fullWidth
-            placeholder="e.g. We want to add two-factor authentication to the login system"
-          />
-          <Button type="submit" variant="outlined" size="large" startIcon={<PsychologyIcon />}>
-            Analyze Impact
-          </Button>
-        </Stack>
-      </Box>
 
       {/* ---------- PROJECT LIST ---------- */}
       <Typography variant="h6" sx={{ mt: 5, mb: 2 }}>
@@ -273,22 +262,15 @@ function ProjectsPage() {
                   </Typography>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Chip label={project.status} color={statusColor(project.status)} size="small" />
-                    <IconButton
-                      size="small"
-                      onClick={() => handleCheckRisk(project.id)}
-                      color="primary"
-                      title="Check Deadline Risk"
-                    >
+                    <IconButton size="small" onClick={() => handleCheckRisk(project.id)} color="primary" title="Check Deadline Risk">
                       <AssessmentIcon fontSize="small" />
                     </IconButton>
-                    <IconButton
-                      size="small"
-                      onClick={() => handleDelete(project.id)}
-                      color="error"
-                      title="Delete Project"
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
+                    {/* Only Admin/ProjectManager can delete a project */}
+                    {canManageProjects && (
+                      <IconButton size="small" onClick={() => handleDelete(project.id)} color="error" title="Delete Project">
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    )}
                   </Stack>
                 </Stack>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
@@ -302,9 +284,7 @@ function ProjectsPage() {
 
       {/* ---------- RISK ANALYSIS POPUP DIALOG ---------- */}
       <Dialog open={riskDialogOpen} onClose={() => setRiskDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          Deadline Risk Analysis {riskData && `- ${riskData.projectName}`}
-        </DialogTitle>
+        <DialogTitle>Deadline Risk Analysis {riskData && `- ${riskData.projectName}`}</DialogTitle>
         <DialogContent>
           {riskData && (
             <>
@@ -365,8 +345,7 @@ function ProjectsPage() {
               </Typography>
 
               <Typography variant="body2" sx={{ mt: 1 }}>
-                Risk Level:{' '}
-                <Chip label={impactData.riskLevel} color={riskColor(impactData.riskLevel)} size="small" />
+                Risk Level: <Chip label={impactData.riskLevel} color={riskColor(impactData.riskLevel)} size="small" />
               </Typography>
 
               <Typography variant="subtitle2" sx={{ mt: 2 }}>

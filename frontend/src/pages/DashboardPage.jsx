@@ -1,6 +1,3 @@
-// This page acts as the Dashboard Module described in the proposal —
-// it gives a quick summary view of the whole system, and for Admins,
-// also shows pending user approvals right at the top.
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
@@ -11,6 +8,7 @@ import {
   Stack,
   Box,
   Button,
+  Chip,
 } from '@mui/material';
 import FolderIcon from '@mui/icons-material/Folder';
 import AssignmentIcon from '@mui/icons-material/Assignment';
@@ -38,18 +36,15 @@ function DashboardPage({ currentUser }) {
   const [milestones, setMilestones] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // ---- Admin-only: pending user approvals ----
   const [pendingUsers, setPendingUsers] = useState([]);
 
   const isAdmin = currentUser?.role === 'Admin';
+  const isTeamMember = currentUser?.role === 'TeamMember';
 
   const fetchPendingUsers = () => {
     axios.get(`${AUTH_API_URL}/pending-users`)
       .then((response) => setPendingUsers(response.data))
-      .catch(() => {
-        // Silently ignore — this section only matters for Admins,
-        // and non-admins will get a 403 which we don't need to show here.
-      });
+      .catch(() => {});
   };
 
   useEffect(() => {
@@ -66,13 +61,11 @@ function DashboardPage({ currentUser }) {
       })
       .catch(() => setLoading(false));
 
-    // Only fetch pending users if the logged-in user is an Admin
     if (isAdmin) {
       fetchPendingUsers();
     }
   }, [isAdmin]);
 
-  // Approves a user using the role they originally requested at registration
   const handleApprove = (userId) => {
     axios.put(`${AUTH_API_URL}/approve/${userId}`, null, {
       headers: { 'Content-Type': 'application/json' },
@@ -81,7 +74,6 @@ function DashboardPage({ currentUser }) {
       .catch(() => {});
   };
 
-  // Rejects a pending registration, removing it entirely
   const handleReject = (userId) => {
     axios.delete(`${AUTH_API_URL}/reject/${userId}`)
       .then(() => fetchPendingUsers())
@@ -89,8 +81,6 @@ function DashboardPage({ currentUser }) {
   };
 
   if (loading) return <Typography sx={{ p: 4 }}>Loading dashboard...</Typography>;
-
-  // ---- Calculate summary statistics from the fetched data ----
 
   const activeProjects = projects.filter((p) => p.status === 'In Progress').length;
   const completedProjects = projects.filter((p) => p.status === 'Completed').length;
@@ -117,6 +107,15 @@ function DashboardPage({ currentUser }) {
     { status: 'In Progress', count: tasks.filter((t) => t.status === 'In Progress').length },
     { status: 'Completed', count: tasks.filter((t) => t.status === 'Completed').length },
   ];
+
+  // Tasks specifically assigned to the logged-in Team Member
+  const myTasks = tasks.filter((t) => t.assignedUserId === currentUser?.id);
+
+  const statusColor = (status) => {
+    if (status === 'Completed') return 'success';
+    if (status === 'In Progress') return 'warning';
+    return 'default';
+  };
 
   const StatCard = ({ icon, label, value, color }) => (
     <Card variant="outlined" sx={{ height: '100%' }}>
@@ -158,13 +157,7 @@ function DashboardPage({ currentUser }) {
             {pendingUsers.map((user) => (
               <Card key={user.id} variant="outlined">
                 <CardContent>
-                  <Stack
-                    direction="row"
-                    justifyContent="space-between"
-                    alignItems="center"
-                    flexWrap="wrap"
-                    gap={2}
-                  >
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
                     <Box>
                       <Typography variant="subtitle1" fontWeight="bold">
                         {user.fullName}
@@ -173,7 +166,6 @@ function DashboardPage({ currentUser }) {
                         {user.email} — requested role: {user.role}
                       </Typography>
                     </Box>
-
                     <Stack direction="row" spacing={2}>
                       <Button variant="contained" color="success" onClick={() => handleApprove(user.id)}>
                         Approve
@@ -187,6 +179,38 @@ function DashboardPage({ currentUser }) {
               </Card>
             ))}
           </Stack>
+        </>
+      )}
+
+      {/* ---------- TEAM MEMBER-ONLY: MY ASSIGNED TASKS ---------- */}
+      {isTeamMember && (
+        <>
+          <Typography variant="h6" sx={{ mt: 4, mb: 2 }}>
+            My Tasks
+          </Typography>
+          {myTasks.length === 0 ? (
+            <Typography color="text.secondary" sx={{ mb: 4 }}>
+              You have no tasks assigned to you yet.
+            </Typography>
+          ) : (
+            <Stack spacing={2} sx={{ mb: 4 }}>
+              {myTasks.map((task) => (
+                <Card key={task.id} variant="outlined">
+                  <CardContent>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Typography variant="subtitle1" fontWeight="bold">
+                        {task.title}
+                      </Typography>
+                      <Chip label={task.status} color={statusColor(task.status)} size="small" />
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary">
+                      Project: {projects.find((p) => p.id === task.projectId)?.name || `#${task.projectId}`}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              ))}
+            </Stack>
+          )}
         </>
       )}
 

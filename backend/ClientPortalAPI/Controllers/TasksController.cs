@@ -65,6 +65,32 @@ public class TasksController : ControllerBase
         return NoContent();
     }
 
+    // PATCH: api/tasks/5/status
+    // Lightweight endpoint for Team Members: allows updating ONLY the status
+    // of a task, without needing permission to edit everything else about it.
+    [Authorize] // any logged-in user can call this
+    [HttpPatch("{id}/status")]
+    public async Task<IActionResult> UpdateTaskStatus(int id, [FromBody] string status)
+    {
+        var task = await _context.Tasks.FindAsync(id);
+        if (task == null)
+        {
+            return NotFound();
+        }
+
+        task.Status = status;
+
+        // If marked Completed, also bump completion percentage to 100 automatically
+        if (status == "Completed")
+        {
+            task.CompletionPercentage = 100;
+        }
+
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
     // DELETE: api/tasks/5
     [Authorize(Roles = "Admin,ProjectManager")]
     [HttpDelete("{id}")]
