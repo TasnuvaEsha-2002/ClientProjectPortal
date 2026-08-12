@@ -1,7 +1,7 @@
 // Task Management page.
 // - Admin/ProjectManager: can create tasks and assign them to a Team Member
-// - Team Member: sees all tasks (read-only, except updating their own task's
-//   status/progress, and commenting on any task they're viewing)
+// - Team Member: sees all tasks, can update status/progress/blocker on their own tasks,
+//   and comment on any task
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
@@ -17,11 +17,11 @@ import {
   Select,
   LinearProgress,
   Collapse,
-  IconButton,
 } from '@mui/material';
 import CommentIcon from '@mui/icons-material/Comment';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 
 const API_URL = 'http://localhost:5256/api/Tasks';
 const PROJECTS_API_URL = 'http://localhost:5256/api/Projects';
@@ -45,12 +45,12 @@ function TasksPage({ currentUser }) {
   const [projectId, setProjectId] = useState('');
   const [assignedUserId, setAssignedUserId] = useState('');
 
-  // Tracks which task's comment section is currently expanded
   const [expandedTaskId, setExpandedTaskId] = useState(null);
-  // Stores fetched comments per task, keyed by task ID
   const [commentsByTask, setCommentsByTask] = useState({});
-  // Stores the text currently being typed for each task's new comment
   const [newCommentText, setNewCommentText] = useState({});
+
+  // Tracks the blocker reason being typed for each task, before submitting
+  const [blockerText, setBlockerText] = useState({});
 
   const canManageTasks = currentUser?.role === 'Admin' || currentUser?.role === 'ProjectManager';
 
@@ -122,7 +122,6 @@ function TasksPage({ currentUser }) {
       .catch((err) => setError(err.message));
   };
 
-  // Updates progress; the slider commits the change only when the user releases it
   const handleProgressChange = (taskId, newProgress) => {
     axios.patch(`${API_URL}/${taskId}/progress`, JSON.stringify(newProgress), {
       headers: { 'Content-Type': 'application/json' },
@@ -131,7 +130,30 @@ function TasksPage({ currentUser }) {
       .catch((err) => setError(err.message));
   };
 
-  // Fetches comments for a task and toggles its expanded view
+  // Submits a blocker reason for a task
+  const handleReportBlocker = (taskId) => {
+    const reason = blockerText[taskId];
+    if (!reason || !reason.trim()) return;
+
+    axios.patch(`${API_URL}/${taskId}/blocker`, JSON.stringify(reason), {
+      headers: { 'Content-Type': 'application/json' },
+    })
+      .then(() => {
+        fetchTasks();
+        setBlockerText((prev) => ({ ...prev, [taskId]: '' }));
+      })
+      .catch((err) => setError(err.message));
+  };
+
+  // Clears a blocker (marks it resolved) by sending an empty reason
+  const handleClearBlocker = (taskId) => {
+    axios.patch(`${API_URL}/${taskId}/blocker`, JSON.stringify(''), {
+      headers: { 'Content-Type': 'application/json' },
+    })
+      .then(() => fetchTasks())
+      .catch((err) => setError(err.message));
+  };
+
   const toggleComments = (taskId) => {
     if (expandedTaskId === taskId) {
       setExpandedTaskId(null);
@@ -152,7 +174,6 @@ function TasksPage({ currentUser }) {
 
     axios.post(COMMENTS_API_URL, { taskId, text })
       .then(() => {
-        // Refresh just this task's comments and clear the input
         axios.get(`${COMMENTS_API_URL}?taskId=${taskId}`)
           .then((response) => {
             setCommentsByTask((prev) => ({ ...prev, [taskId]: response.data }));
@@ -266,7 +287,11 @@ function TasksPage({ currentUser }) {
             const comments = commentsByTask[task.id] || [];
 
             return (
-              <Card key={task.id} variant="outlined">
+              <Card
+                key={task.id}
+                variant="outlined"
+                sx={task.isBlocked ? { borderColor: 'error.main', borderWidth: 2 } : {}}
+              >
                 <CardContent>
                   <Stack direction="row" justifyContent="space-between" alignItems="center">
                     <Typography variant="subtitle1" fontWeight="bold">
@@ -289,6 +314,18 @@ function TasksPage({ currentUser }) {
                       )}
                     </Stack>
                   </Stack>
+
+                  {/* ---------- BLOCKER BANNER (visible to everyone if blocked) ---------- */}
+                  {task.isBlocked && (
+                    <Box sx={{ mt: 1, p: 1, bgcolor: 'error.light', borderRadius: 1 }}>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <ReportProblemIcon fontSize="small" color="error" />
+                        <Typography variant="body2" color="error.dark">
+                          Blocked: {task.blockerReason}
+                        </Typography>
+                      </Stack>
+                    </Box>
+                  )}
 
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                     {task.description}
@@ -322,6 +359,38 @@ function TasksPage({ currentUser }) {
                       </Stack>
                     )}
                   </Box>
+
+                  {/* ---------- BLOCKER REPORTING (only the assignee can report/clear) ---------- */}
+                  {isMyTask && (
+                    <Box sx={{ mt: 2 }}>
+                      {task.isBlocked ? (
+                        <Button size="small" color="success" variant="outlined" onClick={() => handleClearBlocker(task.id)}>
+                          Mark as Unblocked
+                        </Button>
+                      ) : (
+                        <Stack direction="row" spacing={1}>
+                          <TextField
+                            size="small"
+                            fullWidth
+                            placeholder="Describe what's blocking you..."
+                            value={blockerText[task.id] || ''}
+                            onChange={(e) =>
+                              setBlockerText((prev) => ({ ...prev, [task.id]: e.target.value }))
+                            }
+                          />
+                          <Button
+                            size="small"
+                            color="error"
+                            variant="outlined"
+                            startIcon={<ReportProblemIcon />}
+                            onClick={() => handleReportBlocker(task.id)}
+                          >
+                            Report Blocker
+                          </Button>
+                        </Stack>
+                      )}
+                    </Box>
+                  )}
 
                   {/* ---------- COMMENTS TOGGLE ---------- */}
                   <Button

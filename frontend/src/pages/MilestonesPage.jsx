@@ -1,3 +1,7 @@
+// Milestone Management page.
+// - Admin/ProjectManager: can create milestones
+// - Client: sees all milestones (read-only), and can approve Completed ones
+// - Team Member: view-only
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
@@ -17,7 +21,7 @@ import {
 const API_URL = 'http://localhost:5256/api/Milestones';
 const PROJECTS_API_URL = 'http://localhost:5256/api/Projects';
 
-function MilestonesPage() {
+function MilestonesPage({ currentUser }) {
   const [milestones, setMilestones] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +32,9 @@ function MilestonesPage() {
   const [status, setStatus] = useState('Pending');
   const [clientApproved, setClientApproved] = useState(false);
   const [projectId, setProjectId] = useState('');
+
+  const canManageMilestones = currentUser?.role === 'Admin' || currentUser?.role === 'ProjectManager';
+  const isClient = currentUser?.role === 'Client';
 
   const fetchMilestones = () => {
     axios.get(API_URL)
@@ -74,6 +81,19 @@ function MilestonesPage() {
       });
   };
 
+  // Called when a Client clicks "Approve" on a completed milestone
+  const handleApprove = (milestoneId) => {
+    axios.patch(`${API_URL}/${milestoneId}/approve`)
+      .then(() => fetchMilestones())
+      .catch((err) => {
+        if (err.response?.status === 401 || err.response?.status === 403) {
+          setError("You don't have permission to approve milestones.");
+        } else {
+          setError(err.message);
+        }
+      });
+  };
+
   const statusColor = (status) => {
     if (status === 'Completed') return 'success';
     if (status === 'In Progress') return 'warning';
@@ -84,74 +104,62 @@ function MilestonesPage() {
 
   return (
     <>
-      <Typography variant="h6" sx={{ mt: 4, mb: 2 }}>
-        Create New Milestone
-      </Typography>
+      {/* ---------- CREATE MILESTONE FORM (Admin/ProjectManager only) ---------- */}
+      {canManageMilestones && (
+        <>
+          <Typography variant="h6" sx={{ mt: 4, mb: 2 }}>
+            Create New Milestone
+          </Typography>
 
-      {error && (
+          {error && (
+            <Typography color="error" sx={{ mb: 2 }}>
+              {error}
+            </Typography>
+          )}
+
+          <Box component="form" onSubmit={handleSubmit}>
+            <Stack spacing={2}>
+              <TextField label="Milestone Title" value={title} onChange={(e) => setTitle(e.target.value)} required fullWidth />
+              <TextField select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)} required fullWidth>
+                {projects.map((project) => (
+                  <MenuItem key={project.id} value={project.id}>
+                    {project.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                label="Due Date"
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                required
+                slotProps={{ inputLabel: { shrink: true } }}
+                fullWidth
+              />
+              <TextField select label="Status" value={status} onChange={(e) => setStatus(e.target.value)} fullWidth>
+                <MenuItem value="Pending">Pending</MenuItem>
+                <MenuItem value="In Progress">In Progress</MenuItem>
+                <MenuItem value="Completed">Completed</MenuItem>
+              </TextField>
+              <FormControlLabel
+                control={<Checkbox checked={clientApproved} onChange={(e) => setClientApproved(e.target.checked)} />}
+                label="Client Approved"
+              />
+              <Button type="submit" variant="contained" size="large">
+                Create Milestone
+              </Button>
+            </Stack>
+          </Box>
+        </>
+      )}
+
+      {!canManageMilestones && error && (
         <Typography color="error" sx={{ mb: 2 }}>
-          Error: {error}
+          {error}
         </Typography>
       )}
 
-      <Box component="form" onSubmit={handleSubmit}>
-        <Stack spacing={2}>
-          <TextField
-            label="Milestone Title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
-            fullWidth
-          />
-          <TextField
-            select
-            label="Project"
-            value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-            required
-            fullWidth
-          >
-            {projects.map((project) => (
-              <MenuItem key={project.id} value={project.id}>
-                {project.name}
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            label="Due Date"
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            required
-            slotProps={{ inputLabel: { shrink: true } }}
-            fullWidth
-          />
-          <TextField
-            select
-            label="Status"
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            fullWidth
-          >
-            <MenuItem value="Pending">Pending</MenuItem>
-            <MenuItem value="In Progress">In Progress</MenuItem>
-            <MenuItem value="Completed">Completed</MenuItem>
-          </TextField>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={clientApproved}
-                onChange={(e) => setClientApproved(e.target.checked)}
-              />
-            }
-            label="Client Approved"
-          />
-          <Button type="submit" variant="contained" size="large">
-            Create Milestone
-          </Button>
-        </Stack>
-      </Box>
-
+      {/* ---------- MILESTONE LIST ---------- */}
       <Typography variant="h6" sx={{ mt: 5, mb: 2 }}>
         Milestones
       </Typography>
@@ -160,29 +168,39 @@ function MilestonesPage() {
         <Typography color="text.secondary">No milestones found.</Typography>
       ) : (
         <Stack spacing={2}>
-          {milestones.map((milestone) => (
-            <Card key={milestone.id} variant="outlined">
-              <CardContent>
-                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <Typography variant="subtitle1" fontWeight="bold">
-                    {milestone.title}
-                  </Typography>
-                  <Stack direction="row" spacing={1}>
-                    <Chip label={milestone.status} color={statusColor(milestone.status)} size="small" />
-                    {milestone.clientApproved && (
-                      <Chip label="Client Approved" color="info" size="small" />
-                    )}
+          {milestones.map((milestone) => {
+            // A Client can approve only if it's Completed and not yet approved
+            const canApproveThis = isClient && milestone.status === 'Completed' && !milestone.clientApproved;
+
+            return (
+              <Card key={milestone.id} variant="outlined">
+                <CardContent>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography variant="subtitle1" fontWeight="bold">
+                      {milestone.title}
+                    </Typography>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Chip label={milestone.status} color={statusColor(milestone.status)} size="small" />
+                      {milestone.clientApproved && (
+                        <Chip label="Client Approved" color="info" size="small" />
+                      )}
+                      {canApproveThis && (
+                        <Button size="small" variant="contained" color="success" onClick={() => handleApprove(milestone.id)}>
+                          Approve
+                        </Button>
+                      )}
+                    </Stack>
                   </Stack>
-                </Stack>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  Due: {new Date(milestone.dueDate).toLocaleDateString()}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Project: {projects.find((p) => p.id === milestone.projectId)?.name || `#${milestone.projectId}`}
-                </Typography>
-              </CardContent>
-            </Card>
-          ))}
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    Due: {new Date(milestone.dueDate).toLocaleDateString()}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Project: {projects.find((p) => p.id === milestone.projectId)?.name || `#${milestone.projectId}`}
+                  </Typography>
+                </CardContent>
+              </Card>
+            );
+          })}
         </Stack>
       )}
     </>

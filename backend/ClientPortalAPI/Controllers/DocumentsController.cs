@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ClientPortalAPI.Data;
 using ClientPortalAPI.Models;
+using System.Security.Claims;
 
 namespace ClientPortalAPI.Controllers;
 
@@ -35,10 +36,15 @@ public class DocumentsController : ControllerBase
     }
 
     // POST: api/documents/upload
-    // Accepts a file upload (multipart/form-data) along with a projectId
-    [Authorize(Roles = "Admin,ProjectManager")]
+    // Accepts a file upload (multipart/form-data) along with a projectId,
+    // an optional taskId (for task-specific deliverables), and tracks who uploaded it.
+    // Any logged-in user can upload — Team Members need this to submit deliverables.
+    [Authorize]
     [HttpPost("upload")]
-    public async Task<ActionResult<ProjectDocument>> UploadDocument([FromForm] IFormFile file, [FromForm] int projectId)
+    public async Task<ActionResult<ProjectDocument>> UploadDocument(
+        [FromForm] IFormFile file,
+        [FromForm] int projectId,
+        [FromForm] int? taskId)
     {
         // Basic validation
         if (file == null || file.Length == 0)
@@ -51,6 +57,10 @@ public class DocumentsController : ControllerBase
         {
             return NotFound("Project not found.");
         }
+
+        // Get the logged-in user's ID from their JWT token claims
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        int? uploadedByUserId = int.TryParse(userIdClaim, out int uid) ? uid : null;
 
         // Create an "uploads" folder inside the app if it doesn't already exist
         var uploadsFolder = Path.Combine(_env.ContentRootPath, "uploads");
@@ -74,10 +84,12 @@ public class DocumentsController : ControllerBase
         var document = new ProjectDocument
         {
             FileName = file.FileName,
-            FilePath = uniqueFileName, // store just the unique name; full path is reconstructed on download
+            FilePath = uniqueFileName,
             FileType = Path.GetExtension(file.FileName).TrimStart('.').ToLower(),
             UploadedAt = DateTime.UtcNow,
-            ProjectId = projectId
+            ProjectId = projectId,
+            TaskId = taskId,
+            UploadedByUserId = uploadedByUserId
         };
 
         _context.Documents.Add(document);

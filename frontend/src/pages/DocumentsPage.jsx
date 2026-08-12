@@ -1,6 +1,6 @@
-// This page implements the Document Management module from the proposal —
-// allowing Project Managers to upload files linked to a project,
-// and everyone to view/download the list of uploaded documents.
+// This page implements the Document Management module —
+// allowing any logged-in user (including Team Members) to upload files
+// linked to a project and optionally a specific task, and view/download the list.
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
@@ -25,15 +25,22 @@ import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 
 const API_URL = 'http://localhost:5256/api/Documents';
 const PROJECTS_API_URL = 'http://localhost:5256/api/Projects';
+const TASKS_API_URL = 'http://localhost:5256/api/Tasks';
+const USERS_BRIEF_API_URL = 'http://localhost:5256/api/Auth/users-brief';
 
-function DocumentsPage() {
+function DocumentsPage({ currentUser }) {
   const [documents, setDocuments] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const [selectedFile, setSelectedFile] = useState(null);
   const [projectId, setProjectId] = useState('');
+  const [taskId, setTaskId] = useState('');
+
+  const canDelete = currentUser?.role === 'Admin' || currentUser?.role === 'ProjectManager';
 
   const fetchDocuments = () => {
     axios.get(API_URL)
@@ -52,11 +59,14 @@ function DocumentsPage() {
     axios.get(PROJECTS_API_URL)
       .then((response) => setProjects(response.data))
       .catch((err) => setError(err.message));
+    axios.get(TASKS_API_URL)
+      .then((response) => setTasks(response.data))
+      .catch(() => {});
+    axios.get(USERS_BRIEF_API_URL)
+      .then((response) => setAllUsers(response.data))
+      .catch(() => {});
   }, []);
 
-  // Handles the file upload form submission.
-  // Unlike our other forms, this one needs FormData instead of plain JSON,
-  // because we're sending an actual file.
   const handleUpload = (e) => {
     e.preventDefault();
 
@@ -68,6 +78,9 @@ function DocumentsPage() {
     const formData = new FormData();
     formData.append('file', selectedFile);
     formData.append('projectId', projectId);
+    if (taskId) {
+      formData.append('taskId', taskId);
+    }
 
     axios.post(`${API_URL}/upload`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -76,18 +89,14 @@ function DocumentsPage() {
         fetchDocuments();
         setSelectedFile(null);
         setProjectId('');
+        setTaskId('');
       })
       .catch((err) => {
-        if (err.response?.status === 401 || err.response?.status === 403) {
-          setError("You don't have permission to upload documents.");
-        } else {
-          setError(err.message);
-        }
+        setError(err.message);
       });
   };
 
-  // Triggers a file download by opening the download URL in a new tab
-  const handleDownload = (id, fileName) => {
+  const handleDownload = (id) => {
     window.open(`${API_URL}/${id}/download`, '_blank');
   };
 
@@ -102,6 +111,14 @@ function DocumentsPage() {
         }
       });
   };
+
+  const getUserName = (userId) => {
+    const found = allUsers.find((u) => u.id === userId);
+    return found ? found.fullName : 'Unknown';
+  };
+
+  // Only show tasks belonging to the currently selected project in the task dropdown
+  const tasksForSelectedProject = tasks.filter((t) => t.projectId === Number(projectId));
 
   if (loading) return <Typography sx={{ p: 4 }}>Loading documents...</Typography>;
 
@@ -123,7 +140,10 @@ function DocumentsPage() {
             select
             label="Project"
             value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
+            onChange={(e) => {
+              setProjectId(e.target.value);
+              setTaskId(''); // reset task selection when project changes
+            }}
             required
             fullWidth
           >
@@ -134,17 +154,28 @@ function DocumentsPage() {
             ))}
           </TextField>
 
-          <Button
-            variant="outlined"
-            component="label"
-            startIcon={<UploadFileIcon />}
+          <TextField
+            select
+            label="Task (optional)"
+            value={taskId}
+            onChange={(e) => setTaskId(e.target.value)}
+            fullWidth
+            disabled={!projectId}
+            helperText="Link this document to a specific task, if relevant"
           >
+            <MenuItem value="">
+              <em>No specific task</em>
+            </MenuItem>
+            {tasksForSelectedProject.map((task) => (
+              <MenuItem key={task.id} value={task.id}>
+                {task.title}
+              </MenuItem>
+            ))}
+          </TextField>
+
+          <Button variant="outlined" component="label" startIcon={<UploadFileIcon />}>
             {selectedFile ? selectedFile.name : 'Choose File'}
-            <input
-              type="file"
-              hidden
-              onChange={(e) => setSelectedFile(e.target.files[0])}
-            />
+            <input type="file" hidden onChange={(e) => setSelectedFile(e.target.files[0])} />
           </Button>
 
           <Button type="submit" variant="contained" size="large">
@@ -167,12 +198,14 @@ function DocumentsPage() {
                 key={doc.id}
                 secondaryAction={
                   <Stack direction="row" spacing={1}>
-                    <IconButton edge="end" onClick={() => handleDownload(doc.id, doc.fileName)}>
+                    <IconButton edge="end" onClick={() => handleDownload(doc.id)}>
                       <DownloadIcon />
                     </IconButton>
-                    <IconButton edge="end" color="error" onClick={() => handleDelete(doc.id)}>
-                      <DeleteIcon />
-                    </IconButton>
+                    {canDelete && (
+                      <IconButton edge="end" color="error" onClick={() => handleDelete(doc.id)}>
+                        <DeleteIcon />
+                      </IconButton>
+                    )}
                   </Stack>
                 }
               >
@@ -181,7 +214,13 @@ function DocumentsPage() {
                 </ListItemIcon>
                 <ListItemText
                   primary={doc.fileName}
-                  secondary={`${doc.fileType.toUpperCase()} • Uploaded ${new Date(doc.uploadedAt).toLocaleDateString()}`}
+                  secondary={
+                    <>
+                      {doc.fileType.toUpperCase()} • Uploaded {new Date(doc.uploadedAt).toLocaleDateString()}
+                      {doc.uploadedByUserId && ` by ${getUserName(doc.uploadedByUserId)}`}
+                      {doc.taskId && ` • Task: ${tasks.find((t) => t.id === doc.taskId)?.title || `#${doc.taskId}`}`}
+                    </>
+                  }
                 />
               </ListItem>
             ))}

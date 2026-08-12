@@ -5,12 +5,20 @@ namespace ClientPortalAPI.Models;
 public class ProjectDocument
 {
     public int Id { get; set; }
-    public string FileName { get; set; } = string.Empty;   // original file name shown to users
-    public string FilePath { get; set; } = string.Empty;   // where the file is saved on the server
-    public string FileType { get; set; } = string.Empty;   // e.g. "pdf", "docx", "png"
+    public string FileName { get; set; } = string.Empty;
+    public string FilePath { get; set; } = string.Empty;
+    public string FileType { get; set; } = string.Empty;
     public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
 
     // Link to the Project this document belongs to
     public int ProjectId { get; set; }
     public Project? Project { get; set; }
+
+    // NEW: Optional link to a specific Task (e.g. a deliverable for that task)
+    public int? TaskId { get; set; }
+    public TaskItem? Task { get; set; }
+
+    // NEW: Who uploaded this document
+    public int? UploadedByUserId { get; set; }
+    public User? UploadedByUser { get; set; }
 }

@@ -81,4 +81,22 @@ public class MilestonesController : ControllerBase
 
         return NoContent();
     }
+    // PATCH: api/milestones/5/approve
+    // Allows a Client to approve a completed milestone.
+    // Only Clients (and Admin, for oversight) can call this.
+    [Authorize(Roles = "Admin,Client")]
+    [HttpPatch("{id}/approve")]
+    public async Task<IActionResult> ApproveMilestone(int id)
+    {
+        var milestone = await _context.Milestones.FindAsync(id);
+        if (milestone == null)
+        {
+            return NotFound();
+        }
+
+        milestone.ClientApproved = true;
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
 }

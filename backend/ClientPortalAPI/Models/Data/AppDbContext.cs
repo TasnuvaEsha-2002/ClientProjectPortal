@@ -41,5 +41,18 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(c => c.TaskId)
             .OnDelete(DeleteBehavior.Cascade); // deleting a task removes its comments too
+
+        // Configure ProjectDocument's optional links to Task and uploading User
+        modelBuilder.Entity<ProjectDocument>()
+            .HasOne(d => d.Task)
+            .WithMany()
+            .HasForeignKey(d => d.TaskId)
+            .OnDelete(DeleteBehavior.SetNull); // if the task is deleted, keep the document but unlink it
+
+        modelBuilder.Entity<ProjectDocument>()
+            .HasOne(d => d.UploadedByUser)
+            .WithMany()
+            .HasForeignKey(d => d.UploadedByUserId)
+            .OnDelete(DeleteBehavior.SetNull); // if the user is deleted, keep the document but unlink the uploader
     }
 }

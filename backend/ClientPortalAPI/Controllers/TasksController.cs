@@ -133,4 +133,34 @@ public class TasksController : ControllerBase
 
         return NoContent();
     }
+    // PATCH: api/tasks/5/blocker
+    // Lets any logged-in user (typically the assigned Team Member) report
+    // that they're blocked on a task, along with the reason. Passing an
+    // empty reason clears the blocker (marks it resolved).
+    [Authorize]
+    [HttpPatch("{id}/blocker")]
+    public async Task<IActionResult> ReportBlocker(int id, [FromBody] string? reason)
+    {
+        var task = await _context.Tasks.FindAsync(id);
+        if (task == null)
+        {
+            return NotFound();
+        }
+
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            // Empty reason means the blocker is resolved/cleared
+            task.IsBlocked = false;
+            task.BlockerReason = null;
+        }
+        else
+        {
+            task.IsBlocked = true;
+            task.BlockerReason = reason;
+        }
+
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
 }

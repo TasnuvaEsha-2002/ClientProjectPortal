@@ -10,12 +10,13 @@ public class TaskItem
     public DateTime? DueDate { get; set; }
     public int CompletionPercentage { get; set; } = 0;
 
-    // Link to the Project this task belongs to
     public int ProjectId { get; set; }
     public Project? Project { get; set; }
 
-    // NEW: Link to the Team Member this task is assigned to (optional —
-    // a task can exist without being assigned to anyone yet)
     public int? AssignedUserId { get; set; }
     public User? AssignedUser { get; set; }
+
+    // NEW: Blocker tracking — lets a Team Member flag they're stuck
+    public bool IsBlocked { get; set; } = false;
+    public string? BlockerReason { get; set; }
 }

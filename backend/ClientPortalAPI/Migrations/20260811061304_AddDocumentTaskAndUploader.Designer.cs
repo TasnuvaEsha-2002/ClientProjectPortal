@@ -3,6 +3,7 @@ using System;
 using ClientPortalAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ClientPortalAPI.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260811061304_AddDocumentTaskAndUploader")]
+    partial class AddDocumentTaskAndUploader
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -168,9 +171,6 @@ namespace ClientPortalAPI.Migrations
                     b.Property<int?>("AssignedUserId")
                         .HasColumnType("integer");
 
-                    b.Property<string>("BlockerReason")
-                        .HasColumnType("text");
-
                     b.Property<int>("CompletionPercentage")
                         .HasColumnType("integer");
 
@@ -179,9 +179,6 @@ namespace ClientPortalAPI.Migrations
 
                     b.Property<DateTime?>("DueDate")
                         .HasColumnType("timestamp without time zone");
-
-                    b.Property<bool>("IsBlocked")
-                        .HasColumnType("boolean");
 
                     b.Property<string>("Priority")
                         .IsRequired()

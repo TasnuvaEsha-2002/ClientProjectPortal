@@ -127,7 +127,7 @@ function App() {
             path="/milestones"
             element={
               <ProtectedRoute user={user}>
-                <MilestonesPage />
+                <MilestonesPage currentUser={user} />
               </ProtectedRoute>
             }
           />
@@ -135,7 +135,7 @@ function App() {
             path="/documents"
             element={
               <ProtectedRoute user={user}>
-                <DocumentsPage />
+                <DocumentsPage currentUser={user} />
               </ProtectedRoute>
             }
           />
