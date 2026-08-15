@@ -15,6 +15,7 @@ public class AppDbContext : DbContext
     public DbSet<User> Users { get; set; }
     public DbSet<ProjectDocument> Documents { get; set; }
     public DbSet<TaskComment> TaskComments { get; set; }
+    public DbSet<ProjectMember> ProjectMembers { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -54,5 +55,23 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(d => d.UploadedByUserId)
             .OnDelete(DeleteBehavior.SetNull); // if the user is deleted, keep the document but unlink the uploader
+
+        // Configure ProjectMember (many-to-many join between Project and User)
+        modelBuilder.Entity<ProjectMember>()
+            .HasOne(pm => pm.Project)
+            .WithMany()
+            .HasForeignKey(pm => pm.ProjectId)
+            .OnDelete(DeleteBehavior.Cascade); // if a project is deleted, remove its membership records too
+
+        modelBuilder.Entity<ProjectMember>()
+            .HasOne(pm => pm.User)
+            .WithMany()
+            .HasForeignKey(pm => pm.UserId)
+            .OnDelete(DeleteBehavior.Cascade); // if a user is deleted, remove their membership records too
+
+        // Prevent the same user being added twice to the same project
+        modelBuilder.Entity<ProjectMember>()
+            .HasIndex(pm => new { pm.ProjectId, pm.UserId })
+            .IsUnique();
     }
 }

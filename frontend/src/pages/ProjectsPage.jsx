@@ -24,9 +24,13 @@ import AssessmentIcon from '@mui/icons-material/Assessment';
 import PsychologyIcon from '@mui/icons-material/Psychology';
 
 const API_URL = 'http://localhost:5256/api/Projects';
+const MEMBERS_API_URL = 'http://localhost:5256/api/ProjectMembers';
+const USERS_BRIEF_API_URL = 'http://localhost:5256/api/Auth/users-brief';
 
 function ProjectsPage({ currentUser }) {
   const [projects, setProjects] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
+  const [myProjectIds, setMyProjectIds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -35,6 +39,7 @@ function ProjectsPage({ currentUser }) {
   const [startDate, setStartDate] = useState('');
   const [deadline, setDeadline] = useState('');
   const [status, setStatus] = useState('Pending');
+  const [selectedMemberIds, setSelectedMemberIds] = useState([]);
 
   const [riskData, setRiskData] = useState(null);
   const [riskDialogOpen, setRiskDialogOpen] = useState(false);
@@ -44,8 +49,8 @@ function ProjectsPage({ currentUser }) {
   const [impactData, setImpactData] = useState(null);
   const [impactDialogOpen, setImpactDialogOpen] = useState(false);
 
-  // Only Admin/ProjectManager can create, delete, or run impact analysis
   const canManageProjects = currentUser?.role === 'Admin' || currentUser?.role === 'ProjectManager';
+  const isTeamMemberOrClient = currentUser?.role === 'TeamMember' || currentUser?.role === 'Client';
 
   const fetchProjects = () => {
     axios.get(API_URL)
@@ -61,8 +66,20 @@ function ProjectsPage({ currentUser }) {
 
   useEffect(() => {
     fetchProjects();
-  }, []);
+    axios.get(USERS_BRIEF_API_URL)
+      .then((response) => setAllUsers(response.data))
+      .catch(() => {});
 
+    // Team Members/Clients need to know which projects they belong to,
+    // so we can filter the list to only show relevant projects
+    if (isTeamMemberOrClient) {
+      axios.get(`${MEMBERS_API_URL}/my-projects`)
+        .then((response) => setMyProjectIds(response.data))
+        .catch(() => {});
+    }
+  }, [isTeamMemberOrClient]);
+
+  // Creates the project, then adds each selected member to it
   const handleSubmit = (e) => {
     e.preventDefault();
 
@@ -76,6 +93,15 @@ function ProjectsPage({ currentUser }) {
     };
 
     axios.post(API_URL, newProject)
+      .then((response) => {
+        const createdProjectId = response.data.id;
+
+        const addMemberPromises = selectedMemberIds.map((userId) =>
+          axios.post(MEMBERS_API_URL, { projectId: createdProjectId, userId })
+        );
+
+        return Promise.all(addMemberPromises);
+      })
       .then(() => {
         fetchProjects();
         setName('');
@@ -83,6 +109,7 @@ function ProjectsPage({ currentUser }) {
         setStartDate('');
         setDeadline('');
         setStatus('Pending');
+        setSelectedMemberIds([]);
       })
       .catch((err) => {
         setError(err.message);
@@ -146,6 +173,12 @@ function ProjectsPage({ currentUser }) {
 
   if (loading) return <Typography sx={{ p: 4 }}>Loading projects...</Typography>;
 
+  // Filter the visible project list: Admin/PM see everything,
+  // Team Members/Clients only see projects they're a member of
+  const visibleProjects = isTeamMemberOrClient
+    ? projects.filter((p) => myProjectIds.includes(p.id))
+    : projects;
+
   return (
     <>
       {/* ---------- CREATE PROJECT FORM (Admin/ProjectManager only) ---------- */}
@@ -192,6 +225,27 @@ function ProjectsPage({ currentUser }) {
                 <MenuItem value="Pending">Pending</MenuItem>
                 <MenuItem value="In Progress">In Progress</MenuItem>
                 <MenuItem value="Completed">Completed</MenuItem>
+              </TextField>
+              <TextField
+                select
+                label="Assign Team Members / Client"
+                value={selectedMemberIds}
+                onChange={(e) =>
+                  setSelectedMemberIds(
+                    typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value
+                  )
+                }
+                slotProps={{ select: { multiple: true } }}
+                fullWidth
+                helperText="Select everyone who should have access to this project"
+              >
+                {allUsers
+                  .filter((u) => u.role === 'TeamMember' || u.role === 'Client')
+                  .map((u) => (
+                    <MenuItem key={u.id} value={u.id}>
+                      {u.fullName} ({u.role})
+                    </MenuItem>
+                  ))}
               </TextField>
               <Button type="submit" variant="contained" size="large">
                 Create Project
@@ -249,11 +303,13 @@ function ProjectsPage({ currentUser }) {
         Projects
       </Typography>
 
-      {projects.length === 0 ? (
-        <Typography color="text.secondary">No projects found.</Typography>
+      {visibleProjects.length === 0 ? (
+        <Typography color="text.secondary">
+          {isTeamMemberOrClient ? 'You are not assigned to any projects yet.' : 'No projects found.'}
+        </Typography>
       ) : (
         <Stack spacing={2}>
-          {projects.map((project) => (
+          {visibleProjects.map((project) => (
             <Card key={project.id} variant="outlined">
               <CardContent>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -265,7 +321,6 @@ function ProjectsPage({ currentUser }) {
                     <IconButton size="small" onClick={() => handleCheckRisk(project.id)} color="primary" title="Check Deadline Risk">
                       <AssessmentIcon fontSize="small" />
                     </IconButton>
-                    {/* Only Admin/ProjectManager can delete a project */}
                     {canManageProjects && (
                       <IconButton size="small" onClick={() => handleDelete(project.id)} color="error" title="Delete Project">
                         <DeleteIcon fontSize="small" />
