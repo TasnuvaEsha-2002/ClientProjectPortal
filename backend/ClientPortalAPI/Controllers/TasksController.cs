@@ -46,6 +46,25 @@ public class TasksController : ControllerBase
         _context.Tasks.Add(task);
         await _context.SaveChangesAsync();
 
+        // If this task is assigned to someone, automatically make them
+        // a member of the project too — so they can see the project
+        // and this task shows up correctly on their filtered pages.
+        if (task.AssignedUserId.HasValue)
+        {
+            bool alreadyMember = await _context.ProjectMembers.AnyAsync(
+                pm => pm.ProjectId == task.ProjectId && pm.UserId == task.AssignedUserId.Value);
+
+            if (!alreadyMember)
+            {
+                _context.ProjectMembers.Add(new ProjectMember
+                {
+                    ProjectId = task.ProjectId,
+                    UserId = task.AssignedUserId.Value
+                });
+                await _context.SaveChangesAsync();
+            }
+        }
+
         return CreatedAtAction(nameof(GetTask), new { id = task.Id }, task);
     }
 

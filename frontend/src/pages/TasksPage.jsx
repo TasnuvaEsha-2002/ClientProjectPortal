@@ -1,7 +1,6 @@
 // Task Management page.
-// - Admin/ProjectManager: can create tasks and assign them to a Team Member
-// - Team Member: sees all tasks, can update status/progress/blocker on their own tasks,
-//   and comment on any task
+// - Admin/ProjectManager: can create tasks and see ALL tasks
+// - Team Member/Client: only see tasks belonging to projects they're a member of
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
@@ -28,12 +27,14 @@ const PROJECTS_API_URL = 'http://localhost:5256/api/Projects';
 const TEAM_MEMBERS_API_URL = 'http://localhost:5256/api/Auth/team-members';
 const USERS_BRIEF_API_URL = 'http://localhost:5256/api/Auth/users-brief';
 const COMMENTS_API_URL = 'http://localhost:5256/api/TaskComments';
+const MEMBERS_API_URL = 'http://localhost:5256/api/ProjectMembers';
 
 function TasksPage({ currentUser }) {
   const [tasks, setTasks] = useState([]);
   const [projects, setProjects] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
+  const [myProjectIds, setMyProjectIds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -48,8 +49,6 @@ function TasksPage({ currentUser }) {
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [commentsByTask, setCommentsByTask] = useState({});
   const [newCommentText, setNewCommentText] = useState({});
-
-  // Tracks the blocker reason being typed for each task, before submitting
   const [blockerText, setBlockerText] = useState({});
 
   const canManageTasks = currentUser?.role === 'Admin' || currentUser?.role === 'ProjectManager';
@@ -79,6 +78,12 @@ function TasksPage({ currentUser }) {
     if (canManageTasks) {
       axios.get(TEAM_MEMBERS_API_URL)
         .then((response) => setTeamMembers(response.data))
+        .catch(() => {});
+    } else {
+      // Team Members/Clients need to know which projects they belong to,
+      // so we only show tasks from those projects
+      axios.get(`${MEMBERS_API_URL}/my-projects`)
+        .then((response) => setMyProjectIds(response.data))
         .catch(() => {});
     }
   }, [canManageTasks]);
@@ -130,7 +135,6 @@ function TasksPage({ currentUser }) {
       .catch((err) => setError(err.message));
   };
 
-  // Submits a blocker reason for a task
   const handleReportBlocker = (taskId) => {
     const reason = blockerText[taskId];
     if (!reason || !reason.trim()) return;
@@ -145,7 +149,6 @@ function TasksPage({ currentUser }) {
       .catch((err) => setError(err.message));
   };
 
-  // Clears a blocker (marks it resolved) by sending an empty reason
   const handleClearBlocker = (taskId) => {
     axios.patch(`${API_URL}/${taskId}/blocker`, JSON.stringify(''), {
       headers: { 'Content-Type': 'application/json' },
@@ -195,6 +198,11 @@ function TasksPage({ currentUser }) {
   };
 
   if (loading) return <Typography sx={{ p: 4 }}>Loading tasks...</Typography>;
+
+  // Admin/PM see all tasks; everyone else only sees tasks from projects they belong to
+  const visibleTasks = canManageTasks
+    ? tasks
+    : tasks.filter((t) => myProjectIds.includes(t.projectId));
 
   return (
     <>
@@ -277,11 +285,11 @@ function TasksPage({ currentUser }) {
         Tasks
       </Typography>
 
-      {tasks.length === 0 ? (
+      {visibleTasks.length === 0 ? (
         <Typography color="text.secondary">No tasks found.</Typography>
       ) : (
         <Stack spacing={2}>
-          {tasks.map((task) => {
+          {visibleTasks.map((task) => {
             const isMyTask = task.assignedUserId === currentUser?.id;
             const isExpanded = expandedTaskId === task.id;
             const comments = commentsByTask[task.id] || [];
@@ -315,7 +323,6 @@ function TasksPage({ currentUser }) {
                     </Stack>
                   </Stack>
 
-                  {/* ---------- BLOCKER BANNER (visible to everyone if blocked) ---------- */}
                   {task.isBlocked && (
                     <Box sx={{ mt: 1, p: 1, bgcolor: 'error.light', borderRadius: 1 }}>
                       <Stack direction="row" spacing={1} alignItems="center">
@@ -337,7 +344,6 @@ function TasksPage({ currentUser }) {
                     Assigned to: {task.assignedUserId ? (isMyTask ? 'You' : getUserName(task.assignedUserId)) : 'Unassigned'}
                   </Typography>
 
-                  {/* ---------- PROGRESS BAR ---------- */}
                   <Box sx={{ mt: 2 }}>
                     <Stack direction="row" justifyContent="space-between">
                       <Typography variant="caption">Progress</Typography>
@@ -360,7 +366,6 @@ function TasksPage({ currentUser }) {
                     )}
                   </Box>
 
-                  {/* ---------- BLOCKER REPORTING (only the assignee can report/clear) ---------- */}
                   {isMyTask && (
                     <Box sx={{ mt: 2 }}>
                       {task.isBlocked ? (
@@ -392,7 +397,6 @@ function TasksPage({ currentUser }) {
                     </Box>
                   )}
 
-                  {/* ---------- COMMENTS TOGGLE ---------- */}
                   <Button
                     size="small"
                     startIcon={<CommentIcon />}

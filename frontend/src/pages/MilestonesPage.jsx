@@ -1,7 +1,7 @@
 // Milestone Management page.
-// - Admin/ProjectManager: can create milestones
-// - Client: sees all milestones (read-only), and can approve Completed ones
-// - Team Member: view-only
+// - Admin/ProjectManager: can create milestones and see ALL milestones
+// - Client: can approve Completed milestones, but only sees ones from their projects
+// - Team Member: view-only, only sees milestones from their projects
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
@@ -20,10 +20,12 @@ import {
 
 const API_URL = 'http://localhost:5256/api/Milestones';
 const PROJECTS_API_URL = 'http://localhost:5256/api/Projects';
+const MEMBERS_API_URL = 'http://localhost:5256/api/ProjectMembers';
 
 function MilestonesPage({ currentUser }) {
   const [milestones, setMilestones] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [myProjectIds, setMyProjectIds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -53,7 +55,13 @@ function MilestonesPage({ currentUser }) {
     axios.get(PROJECTS_API_URL)
       .then((response) => setProjects(response.data))
       .catch((err) => setError(err.message));
-  }, []);
+
+    if (!canManageMilestones) {
+      axios.get(`${MEMBERS_API_URL}/my-projects`)
+        .then((response) => setMyProjectIds(response.data))
+        .catch(() => {});
+    }
+  }, [canManageMilestones]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -81,7 +89,6 @@ function MilestonesPage({ currentUser }) {
       });
   };
 
-  // Called when a Client clicks "Approve" on a completed milestone
   const handleApprove = (milestoneId) => {
     axios.patch(`${API_URL}/${milestoneId}/approve`)
       .then(() => fetchMilestones())
@@ -101,6 +108,11 @@ function MilestonesPage({ currentUser }) {
   };
 
   if (loading) return <Typography sx={{ p: 4 }}>Loading milestones...</Typography>;
+
+  // Admin/PM see all milestones; everyone else only sees milestones from projects they belong to
+  const visibleMilestones = canManageMilestones
+    ? milestones
+    : milestones.filter((m) => myProjectIds.includes(m.projectId));
 
   return (
     <>
@@ -164,12 +176,11 @@ function MilestonesPage({ currentUser }) {
         Milestones
       </Typography>
 
-      {milestones.length === 0 ? (
+      {visibleMilestones.length === 0 ? (
         <Typography color="text.secondary">No milestones found.</Typography>
       ) : (
         <Stack spacing={2}>
-          {milestones.map((milestone) => {
-            // A Client can approve only if it's Completed and not yet approved
+          {visibleMilestones.map((milestone) => {
             const canApproveThis = isClient && milestone.status === 'Completed' && !milestone.clientApproved;
 
             return (
