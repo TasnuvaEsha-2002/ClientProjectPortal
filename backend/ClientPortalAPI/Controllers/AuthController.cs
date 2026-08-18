@@ -171,6 +171,62 @@ public class AuthController : ControllerBase
         return Ok(new { message = "User registration rejected and removed." });
     }
 
+    // GET: api/auth/me
+    // Returns the logged-in user's own profile info
+    [Authorize]
+    [HttpGet("me")]
+    public async Task<IActionResult> GetMyProfile()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userIdClaim == null || !int.TryParse(userIdClaim, out int userId))
+        {
+            return Unauthorized();
+        }
+
+        var user = await _context.Users.FindAsync(userId);
+        if (user == null)
+        {
+            return NotFound();
+        }
+
+        return Ok(new { user.Id, user.FullName, user.Email, user.Role });
+    }
+
+    // PUT: api/auth/me
+    // Lets the logged-in user update their own name and/or password.
+    // Email and Role cannot be changed here — only an Admin can change roles.
+    [Authorize]
+    [HttpPut("me")]
+    public async Task<IActionResult> UpdateMyProfile([FromBody] UpdateProfileDto dto)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (userIdClaim == null || !int.TryParse(userIdClaim, out int userId))
+        {
+            return Unauthorized();
+        }
+
+        var user = await _context.Users.FindAsync(userId);
+        if (user == null)
+        {
+            return NotFound();
+        }
+
+        if (!string.IsNullOrWhiteSpace(dto.FullName))
+        {
+            user.FullName = dto.FullName;
+        }
+
+        // Only update the password if a new one was actually provided
+        if (!string.IsNullOrWhiteSpace(dto.NewPassword))
+        {
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Profile updated successfully.", user.FullName });
+    }
+
     private string GenerateJwtToken(User user)
     {
         var claims = new[]

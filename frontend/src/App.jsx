@@ -11,6 +11,7 @@ import MilestonesPage from './pages/MilestonesPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import DocumentsPage from './pages/DocumentsPage';
+import ProfilePage from './pages/ProfilePage';
 
 // Top navigation bar shown only when a user is logged in.
 // Displays tabs for each main section plus the logged-in user's info and a logout button.
@@ -18,7 +19,7 @@ function Navigation({ user, onLogout }) {
   const location = useLocation();
 
   return (
-    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }} flexWrap="wrap">
       <Tabs value={location.pathname}>
         <Tab label="Dashboard" value="/" component={Link} to="/" />
         <Tab label="Projects" value="/projects" component={Link} to="/projects" />
@@ -27,7 +28,12 @@ function Navigation({ user, onLogout }) {
         <Tab label="Documents" value="/documents" component={Link} to="/documents" />
       </Tabs>
       <Stack direction="row" spacing={2} alignItems="center">
-        <Typography variant="body2">
+        <Typography
+          variant="body2"
+          component={Link}
+          to="/profile"
+          sx={{ textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}
+        >
           {user.fullName} ({user.role})
         </Typography>
         <Button size="small" onClick={onLogout}>Logout</Button>
@@ -69,6 +75,13 @@ function App() {
     localStorage.setItem('user', JSON.stringify(newUser));
     setToken(newToken);
     setUser(newUser);
+  };
+
+  // Called when the user updates their profile — keeps navbar/session in sync
+  const handleProfileUpdate = (newFullName) => {
+    const updatedUser = { ...user, fullName: newFullName };
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+    setUser(updatedUser);
   };
 
   // Clears the session and logs the user out
@@ -136,6 +149,14 @@ function App() {
             element={
               <ProtectedRoute user={user}>
                 <DocumentsPage currentUser={user} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute user={user}>
+                <ProfilePage currentUser={user} onProfileUpdate={handleProfileUpdate} />
               </ProtectedRoute>
             }
           />
