@@ -9,11 +9,14 @@ import {
   Box,
   Button,
   Chip,
+  Checkbox,
 } from '@mui/material';
 import FolderIcon from '@mui/icons-material/Folder';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import FlagIcon from '@mui/icons-material/Flag';
 import WarningIcon from '@mui/icons-material/Warning';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import PendingActionsIcon from '@mui/icons-material/PendingActions';
 import {
   PieChart,
   Pie,
@@ -29,6 +32,15 @@ import {
 } from 'recharts';
 
 const AUTH_API_URL = 'http://localhost:5256/api/Auth';
+const TASKS_API_URL = 'http://localhost:5256/api/Tasks';
+
+// Returns a greeting based on the current time of day
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good Morning';
+  if (hour < 17) return 'Good Afternoon';
+  return 'Good Evening';
+}
 
 function DashboardPage({ currentUser }) {
   const [projects, setProjects] = useState([]);
@@ -50,7 +62,7 @@ function DashboardPage({ currentUser }) {
   useEffect(() => {
     Promise.all([
       axios.get('http://localhost:5256/api/Projects'),
-      axios.get('http://localhost:5256/api/Tasks'),
+      axios.get(TASKS_API_URL),
       axios.get('http://localhost:5256/api/Milestones'),
     ])
       .then(([projectsRes, tasksRes, milestonesRes]) => {
@@ -80,13 +92,203 @@ function DashboardPage({ currentUser }) {
       .catch(() => {});
   };
 
+  // Quick status toggle used on the Team Member dashboard's "Today's Tasks" checklist
+  const handleQuickComplete = (taskId) => {
+    axios.patch(`${TASKS_API_URL}/${taskId}/status`, JSON.stringify('Completed'), {
+      headers: { 'Content-Type': 'application/json' },
+    })
+      .then(() => {
+        setTasks((prev) =>
+          prev.map((t) => (t.id === taskId ? { ...t, status: 'Completed', completionPercentage: 100 } : t))
+        );
+      })
+      .catch(() => {});
+  };
+
   if (loading) return <Typography sx={{ p: 4 }}>Loading dashboard...</Typography>;
+
+  const statusColor = (status) => {
+    if (status === 'Completed') return 'success';
+    if (status === 'In Progress') return 'warning';
+    return 'default';
+  };
+
+  // ============================================================
+  // TEAM MEMBER DASHBOARD — a distinct, personalized view
+  // ============================================================
+  if (isTeamMember) {
+    const myTasks = tasks.filter((t) => t.assignedUserId === currentUser?.id);
+    const completedCount = myTasks.filter((t) => t.status === 'Completed').length;
+    const inProgressCount = myTasks.filter((t) => t.status === 'In Progress').length;
+    const notStartedCount = myTasks.filter((t) => t.status === 'Not Started').length;
+
+    const now = new Date();
+    const todayStr = now.toDateString();
+
+    // Overdue: due date has passed and not completed
+    const overdueTasks = myTasks.filter(
+      (t) => t.dueDate && new Date(t.dueDate) < now && t.status !== 'Completed'
+    );
+
+    // Today's tasks: not completed, and either due today or already in progress
+    const todaysTasks = myTasks.filter(
+      (t) =>
+        t.status !== 'Completed' &&
+        (
+          (t.dueDate && new Date(t.dueDate).toDateString() === todayStr) ||
+          t.status === 'In Progress'
+        )
+    );
+
+    // Upcoming deadlines: due in the future, not completed, sorted soonest first
+    const upcomingDeadlines = myTasks
+      .filter((t) => t.dueDate && new Date(t.dueDate) >= now && t.status !== 'Completed')
+      .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
+      .slice(0, 5);
+
+    const daysLate = (dueDate) => {
+      const diff = Math.floor((now - new Date(dueDate)) / (1000 * 60 * 60 * 24));
+      return diff;
+    };
+
+    return (
+      <>
+        {/* ---------- GREETING ---------- */}
+        <Typography variant="h5" sx={{ mt: 4, mb: 3 }}>
+          {getGreeting()}, {currentUser.fullName.split(' ')[0]} 👋
+        </Typography>
+
+        {/* ---------- TASK SUMMARY STATS ---------- */}
+        <Grid container spacing={2} sx={{ mb: 4 }}>
+          <Grid item xs={4}>
+            <Card variant="outlined">
+              <CardContent sx={{ textAlign: 'center' }}>
+                <Typography variant="h4" fontWeight="bold" color="primary.main">
+                  {myTasks.length}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  My Tasks
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={4}>
+            <Card variant="outlined">
+              <CardContent sx={{ textAlign: 'center' }}>
+                <Typography variant="h4" fontWeight="bold" color="success.main">
+                  {completedCount}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Completed
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={4}>
+            <Card variant="outlined">
+              <CardContent sx={{ textAlign: 'center' }}>
+                <Typography variant="h4" fontWeight="bold" color="warning.main">
+                  {inProgressCount}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  In Progress
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+
+        {/* ---------- OVERDUE TASKS ---------- */}
+        {overdueTasks.length > 0 && (
+          <>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+              <WarningIcon color="error" fontSize="small" />
+              <Typography variant="h6" color="error.main">
+                Overdue Tasks
+              </Typography>
+            </Stack>
+            <Stack spacing={1} sx={{ mb: 4 }}>
+              {overdueTasks.map((task) => (
+                <Card key={task.id} variant="outlined" sx={{ borderColor: 'error.main' }}>
+                  <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Typography variant="body2">{task.title}</Typography>
+                      <Chip
+                        label={`${daysLate(task.dueDate)} day${daysLate(task.dueDate) === 1 ? '' : 's'} late`}
+                        color="error"
+                        size="small"
+                      />
+                    </Stack>
+                  </CardContent>
+                </Card>
+              ))}
+            </Stack>
+          </>
+        )}
+
+        {/* ---------- TODAY'S TASKS ---------- */}
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+          <AssignmentIcon fontSize="small" />
+          <Typography variant="h6">Today's Tasks</Typography>
+        </Stack>
+        {todaysTasks.length === 0 ? (
+          <Typography color="text.secondary" sx={{ mb: 4 }}>
+            Nothing due today. 🎉
+          </Typography>
+        ) : (
+          <Card variant="outlined" sx={{ mb: 4 }}>
+            <CardContent>
+              <Stack spacing={1}>
+                {todaysTasks.map((task) => (
+                  <Stack key={task.id} direction="row" alignItems="center" spacing={1}>
+                    <Checkbox
+                      checked={false}
+                      onChange={() => handleQuickComplete(task.id)}
+                    />
+                    <Typography variant="body2">{task.title}</Typography>
+                  </Stack>
+                ))}
+              </Stack>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ---------- UPCOMING DEADLINES ---------- */}
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+          <PendingActionsIcon fontSize="small" />
+          <Typography variant="h6">Upcoming Deadlines</Typography>
+        </Stack>
+        {upcomingDeadlines.length === 0 ? (
+          <Typography color="text.secondary">No upcoming deadlines.</Typography>
+        ) : (
+          <Card variant="outlined">
+            <CardContent>
+              <Stack spacing={1.5}>
+                {upcomingDeadlines.map((task) => (
+                  <Stack key={task.id} direction="row" justifyContent="space-between">
+                    <Typography variant="body2">{task.title}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {new Date(task.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    </Typography>
+                  </Stack>
+                ))}
+              </Stack>
+            </CardContent>
+          </Card>
+        )}
+      </>
+    );
+  }
+
+  // ============================================================
+  // ADMIN / PROJECT MANAGER / CLIENT DASHBOARD — general overview
+  // ============================================================
 
   const activeProjects = projects.filter((p) => p.status === 'In Progress').length;
   const completedProjects = projects.filter((p) => p.status === 'Completed').length;
   const pendingCount = projects.filter((p) => p.status === 'Pending').length;
 
-  const overdueTasks = tasks.filter(
+  const overdueTasksCount = tasks.filter(
     (t) => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'Completed'
   ).length;
 
@@ -107,15 +309,6 @@ function DashboardPage({ currentUser }) {
     { status: 'In Progress', count: tasks.filter((t) => t.status === 'In Progress').length },
     { status: 'Completed', count: tasks.filter((t) => t.status === 'Completed').length },
   ];
-
-  // Tasks specifically assigned to the logged-in Team Member
-  const myTasks = tasks.filter((t) => t.assignedUserId === currentUser?.id);
-
-  const statusColor = (status) => {
-    if (status === 'Completed') return 'success';
-    if (status === 'In Progress') return 'warning';
-    return 'default';
-  };
 
   const StatCard = ({ icon, label, value, color }) => (
     <Card variant="outlined" sx={{ height: '100%' }}>
@@ -147,7 +340,6 @@ function DashboardPage({ currentUser }) {
 
   return (
     <>
-      {/* ---------- ADMIN-ONLY: PENDING USER APPROVALS ---------- */}
       {isAdmin && pendingUsers.length > 0 && (
         <>
           <Typography variant="h6" sx={{ mt: 4, mb: 2 }}>
@@ -182,39 +374,6 @@ function DashboardPage({ currentUser }) {
         </>
       )}
 
-      {/* ---------- TEAM MEMBER-ONLY: MY ASSIGNED TASKS ---------- */}
-      {isTeamMember && (
-        <>
-          <Typography variant="h6" sx={{ mt: 4, mb: 2 }}>
-            My Tasks
-          </Typography>
-          {myTasks.length === 0 ? (
-            <Typography color="text.secondary" sx={{ mb: 4 }}>
-              You have no tasks assigned to you yet.
-            </Typography>
-          ) : (
-            <Stack spacing={2} sx={{ mb: 4 }}>
-              {myTasks.map((task) => (
-                <Card key={task.id} variant="outlined">
-                  <CardContent>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                      <Typography variant="subtitle1" fontWeight="bold">
-                        {task.title}
-                      </Typography>
-                      <Chip label={task.status} color={statusColor(task.status)} size="small" />
-                    </Stack>
-                    <Typography variant="caption" color="text.secondary">
-                      Project: {projects.find((p) => p.id === task.projectId)?.name || `#${task.projectId}`}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              ))}
-            </Stack>
-          )}
-        </>
-      )}
-
-      {/* ---------- OVERVIEW STATS ---------- */}
       <Typography variant="h6" sx={{ mt: 4, mb: 3 }}>
         Overview
       </Typography>
@@ -227,7 +386,7 @@ function DashboardPage({ currentUser }) {
           <StatCard icon={<FolderIcon />} label="Completed Projects" value={completedProjects} color="success" />
         </Grid>
         <Grid item xs={6}>
-          <StatCard icon={<WarningIcon />} label="Overdue Tasks" value={overdueTasks} color="error" />
+          <StatCard icon={<WarningIcon />} label="Overdue Tasks" value={overdueTasksCount} color="error" />
         </Grid>
         <Grid item xs={6}>
           <StatCard icon={<FlagIcon />} label="Pending Approvals" value={pendingApprovals} color="warning" />
@@ -240,7 +399,6 @@ function DashboardPage({ currentUser }) {
         </Grid>
       </Grid>
 
-      {/* ---------- PROJECT STATUS CHART ---------- */}
       {chartData.length > 0 && (
         <>
           <Typography variant="h6" sx={{ mt: 5, mb: 2 }}>
@@ -264,7 +422,6 @@ function DashboardPage({ currentUser }) {
         </>
       )}
 
-      {/* ---------- TASK STATUS CHART ---------- */}
       {tasks.length > 0 && (
         <>
           <Typography variant="h6" sx={{ mt: 5, mb: 2 }}>
