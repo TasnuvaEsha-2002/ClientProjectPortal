@@ -366,6 +366,7 @@ function TasksPage({ currentUser }) {
                     )}
                   </Box>
 
+                  {/* Assignee can report/clear their own blocker */}
                   {isMyTask && (
                     <Box sx={{ mt: 2 }}>
                       {task.isBlocked ? (
@@ -394,6 +395,20 @@ function TasksPage({ currentUser }) {
                           </Button>
                         </Stack>
                       )}
+                    </Box>
+                  )}
+
+                  {/* Admin/ProjectManager can resolve a blocker reported by someone else */}
+                  {canManageTasks && !isMyTask && task.isBlocked && (
+                    <Box sx={{ mt: 2 }}>
+                      <Button
+                        size="small"
+                        color="success"
+                        variant="contained"
+                        onClick={() => handleClearBlocker(task.id)}
+                      >
+                        ✓ Mark as Resolved
+                      </Button>
                     </Box>
                   )}
 
