@@ -17,6 +17,8 @@ import AssignmentIcon from '@mui/icons-material/Assignment';
 import FlagIcon from '@mui/icons-material/Flag';
 import WarningIcon from '@mui/icons-material/Warning';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import {
   PieChart,
   Pie,
@@ -42,6 +44,34 @@ function getGreeting() {
   return 'Good Evening';
 }
 
+// A reusable, visually rich stat card with a colored icon badge —
+// used across all dashboard variants for a consistent, polished look
+function StatCard({ icon, label, value, color }) {
+  return (
+    <Card variant="outlined" sx={{ height: '100%' }}>
+      <CardContent>
+        <Stack direction="row" spacing={2} alignItems="center">
+          <Box
+            sx={{
+              backgroundColor: `${color}.light`,
+              color: `${color}.main`,
+              borderRadius: 2,
+              p: 1.5,
+              display: 'flex',
+            }}
+          >
+            {icon}
+          </Box>
+          <Box>
+            <Typography variant="h5" fontWeight="bold">{value}</Typography>
+            <Typography variant="body2" color="text.secondary">{label}</Typography>
+          </Box>
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}
+
 function DashboardPage({ currentUser }) {
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -49,8 +79,6 @@ function DashboardPage({ currentUser }) {
   const [loading, setLoading] = useState(true);
 
   const [pendingUsers, setPendingUsers] = useState([]);
-
-  // Stores the calculated risk level per project (only fetched for PM dashboard)
   const [riskByProject, setRiskByProject] = useState({});
 
   const isAdmin = currentUser?.role === 'Admin';
@@ -82,7 +110,6 @@ function DashboardPage({ currentUser }) {
     }
   }, [isAdmin]);
 
-  // Once projects are loaded, fetch risk analysis for each one (PM dashboard only)
   useEffect(() => {
     if (isProjectManager && projects.length > 0) {
       projects.forEach((project) => {
@@ -122,12 +149,6 @@ function DashboardPage({ currentUser }) {
   };
 
   if (loading) return <Typography sx={{ p: 4 }}>Loading dashboard...</Typography>;
-
-  const statusColor = (status) => {
-    if (status === 'Completed') return 'success';
-    if (status === 'In Progress') return 'warning';
-    return 'default';
-  };
 
   const riskColor = (level) => {
     if (level === 'High') return 'error';
@@ -171,34 +192,13 @@ function DashboardPage({ currentUser }) {
 
         <Grid container spacing={2} sx={{ mb: 4 }}>
           <Grid item xs={4}>
-            <Card variant="outlined">
-              <CardContent sx={{ textAlign: 'center' }}>
-                <Typography variant="h4" fontWeight="bold" color="primary.main">
-                  {myTasks.length}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">My Tasks</Typography>
-              </CardContent>
-            </Card>
+            <StatCard icon={<AssignmentIcon />} label="My Tasks" value={myTasks.length} color="primary" />
           </Grid>
           <Grid item xs={4}>
-            <Card variant="outlined">
-              <CardContent sx={{ textAlign: 'center' }}>
-                <Typography variant="h4" fontWeight="bold" color="success.main">
-                  {completedCount}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">Completed</Typography>
-              </CardContent>
-            </Card>
+            <StatCard icon={<CheckCircleIcon />} label="Completed" value={completedCount} color="success" />
           </Grid>
           <Grid item xs={4}>
-            <Card variant="outlined">
-              <CardContent sx={{ textAlign: 'center' }}>
-                <Typography variant="h4" fontWeight="bold" color="warning.main">
-                  {inProgressCount}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">In Progress</Typography>
-              </CardContent>
-            </Card>
+            <StatCard icon={<TrendingUpIcon />} label="In Progress" value={inProgressCount} color="warning" />
           </Grid>
         </Grid>
 
@@ -210,10 +210,10 @@ function DashboardPage({ currentUser }) {
             </Stack>
             <Stack spacing={1} sx={{ mb: 4 }}>
               {overdueTasks.map((task) => (
-                <Card key={task.id} variant="outlined" sx={{ borderColor: 'error.main' }}>
+                <Card key={task.id} variant="outlined" sx={{ borderColor: 'error.main', borderWidth: 2 }}>
                   <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
                     <Stack direction="row" justifyContent="space-between" alignItems="center">
-                      <Typography variant="body2">{task.title}</Typography>
+                      <Typography variant="body2" fontWeight={500}>{task.title}</Typography>
                       <Chip
                         label={`${daysLate(task.dueDate)} day${daysLate(task.dueDate) === 1 ? '' : 's'} late`}
                         color="error"
@@ -278,13 +278,21 @@ function DashboardPage({ currentUser }) {
     const activeCount = projects.filter((p) => p.status === 'In Progress').length;
     const completedCount = projects.filter((p) => p.status === 'Completed').length;
 
-    // At-risk projects: those where our AI risk-analysis returned Medium or High
     const atRiskProjects = projects.filter((p) => {
       const risk = riskByProject[p.id];
       return risk && (risk.riskLevel === 'High' || risk.riskLevel === 'Medium');
     });
 
     const openBlockers = tasks.filter((t) => t.isBlocked);
+
+    // Chart data: project status breakdown, same style as the general dashboard
+    const pendingCount = projects.filter((p) => p.status === 'Pending').length;
+    const statusChartData = [
+      { name: 'Pending', value: pendingCount },
+      { name: 'In Progress', value: activeCount },
+      { name: 'Completed', value: completedCount },
+    ].filter((item) => item.value > 0);
+    const STATUS_COLORS = ['#9e9e9e', '#F5A623', '#2E7D32'];
 
     return (
       <>
@@ -294,55 +302,20 @@ function DashboardPage({ currentUser }) {
 
         {/* ---------- STAT CARDS ---------- */}
         <Grid container spacing={2} sx={{ mb: 4 }}>
-          <Grid item xs={4}>
-            <Card variant="outlined">
-              <CardContent sx={{ textAlign: 'center' }}>
-                <Typography variant="h4" fontWeight="bold" color="primary.main">
-                  {projects.length}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">My Projects</Typography>
-              </CardContent>
-            </Card>
+          <Grid item xs={6} sm={4}>
+            <StatCard icon={<FolderIcon />} label="My Projects" value={projects.length} color="primary" />
           </Grid>
-          <Grid item xs={4}>
-            <Card variant="outlined">
-              <CardContent sx={{ textAlign: 'center' }}>
-                <Typography variant="h4" fontWeight="bold" color="error.main">
-                  {atRiskProjects.length}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">At Risk</Typography>
-              </CardContent>
-            </Card>
+          <Grid item xs={6} sm={4}>
+            <StatCard icon={<WarningIcon />} label="At Risk" value={atRiskProjects.length} color="error" />
           </Grid>
-          <Grid item xs={4}>
-            <Card variant="outlined">
-              <CardContent sx={{ textAlign: 'center' }}>
-                <Typography variant="h4" fontWeight="bold" color="warning.main">
-                  {openBlockers.length}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">Blockers</Typography>
-              </CardContent>
-            </Card>
+          <Grid item xs={6} sm={4}>
+            <StatCard icon={<ReportProblemIcon />} label="Blockers" value={openBlockers.length} color="warning" />
           </Grid>
-          <Grid item xs={6}>
-            <Card variant="outlined">
-              <CardContent sx={{ textAlign: 'center' }}>
-                <Typography variant="h4" fontWeight="bold" color="success.main">
-                  {completedCount}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">Completed</Typography>
-              </CardContent>
-            </Card>
+          <Grid item xs={6} sm={6}>
+            <StatCard icon={<CheckCircleIcon />} label="Completed" value={completedCount} color="success" />
           </Grid>
-          <Grid item xs={6}>
-            <Card variant="outlined">
-              <CardContent sx={{ textAlign: 'center' }}>
-                <Typography variant="h4" fontWeight="bold" color="info.main">
-                  {activeCount}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">In Progress</Typography>
-              </CardContent>
-            </Card>
+          <Grid item xs={6} sm={6}>
+            <StatCard icon={<TrendingUpIcon />} label="In Progress" value={activeCount} color="info" />
           </Grid>
         </Grid>
 
@@ -355,10 +328,10 @@ function DashboardPage({ currentUser }) {
             </Stack>
             <Stack spacing={1} sx={{ mb: 4 }}>
               {atRiskProjects.map((project) => (
-                <Card key={project.id} variant="outlined" sx={{ borderColor: 'error.main' }}>
+                <Card key={project.id} variant="outlined" sx={{ borderColor: 'error.main', borderWidth: 2 }}>
                   <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
                     <Stack direction="row" justifyContent="space-between" alignItems="center">
-                      <Typography variant="body2">{project.name}</Typography>
+                      <Typography variant="body2" fontWeight={500}>{project.name}</Typography>
                       <Chip
                         label={`${riskByProject[project.id]?.riskLevel} Risk`}
                         color={riskColor(riskByProject[project.id]?.riskLevel)}
@@ -379,20 +352,38 @@ function DashboardPage({ currentUser }) {
               <ReportProblemIcon color="warning" fontSize="small" />
               <Typography variant="h6">Recent Blockers</Typography>
             </Stack>
-            <Card variant="outlined" sx={{ mb: 4 }}>
+            <Card variant="outlined" sx={{ mb: 4, borderLeft: '4px solid', borderLeftColor: 'warning.main' }}>
               <CardContent>
                 <Stack spacing={1.5}>
                   {openBlockers.map((task) => (
                     <Box key={task.id}>
-                      <Typography variant="body2" fontWeight="bold">
-                        {task.title}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {task.blockerReason}
-                      </Typography>
+                      <Typography variant="body2" fontWeight="bold">{task.title}</Typography>
+                      <Typography variant="caption" color="text.secondary">{task.blockerReason}</Typography>
                     </Box>
                   ))}
                 </Stack>
+              </CardContent>
+            </Card>
+          </>
+        )}
+
+        {/* ---------- PROJECT STATUS CHART ---------- */}
+        {statusChartData.length > 0 && (
+          <>
+            <Typography variant="h6" sx={{ mb: 2 }}>Project Status Breakdown</Typography>
+            <Card variant="outlined" sx={{ mb: 4 }}>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={260}>
+                  <PieChart>
+                    <Pie data={statusChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label>
+                      {statusChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={STATUS_COLORS[index % STATUS_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
               </CardContent>
             </Card>
           </>
@@ -405,9 +396,8 @@ function DashboardPage({ currentUser }) {
         ) : (
           <Card variant="outlined">
             <CardContent>
-              <Stack spacing={2}>
+              <Stack spacing={2.5}>
                 {projects.map((project) => {
-                  // Progress = % of this project's tasks that are Completed
                   const projectTasks = tasks.filter((t) => t.projectId === project.id);
                   const progress =
                     projectTasks.length === 0
@@ -415,14 +405,20 @@ function DashboardPage({ currentUser }) {
                       : Math.round(
                           (projectTasks.filter((t) => t.status === 'Completed').length / projectTasks.length) * 100
                         );
+                  const barColor = progress >= 75 ? 'success' : progress >= 40 ? 'warning' : 'error';
 
                   return (
                     <Box key={project.id}>
                       <Stack direction="row" justifyContent="space-between">
-                        <Typography variant="body2">{project.name}</Typography>
-                        <Typography variant="body2" color="text.secondary">{progress}%</Typography>
+                        <Typography variant="body2" fontWeight={500}>{project.name}</Typography>
+                        <Typography variant="body2" color="text.secondary" fontWeight="bold">{progress}%</Typography>
                       </Stack>
-                      <LinearProgress variant="determinate" value={progress} sx={{ borderRadius: 1, height: 6, mt: 0.5 }} />
+                      <LinearProgress
+                        variant="determinate"
+                        value={progress}
+                        color={barColor}
+                        sx={{ borderRadius: 1, height: 8, mt: 0.5 }}
+                      />
                     </Box>
                   );
                 })}
@@ -463,30 +459,6 @@ function DashboardPage({ currentUser }) {
     { status: 'In Progress', count: tasks.filter((t) => t.status === 'In Progress').length },
     { status: 'Completed', count: tasks.filter((t) => t.status === 'Completed').length },
   ];
-
-  const StatCard = ({ icon, label, value, color }) => (
-    <Card variant="outlined" sx={{ height: '100%' }}>
-      <CardContent>
-        <Stack direction="row" spacing={2} alignItems="center">
-          <Box
-            sx={{
-              backgroundColor: `${color}.light`,
-              color: `${color}.main`,
-              borderRadius: 2,
-              p: 1.5,
-              display: 'flex',
-            }}
-          >
-            {icon}
-          </Box>
-          <Box>
-            <Typography variant="h5" fontWeight="bold">{value}</Typography>
-            <Typography variant="body2" color="text.secondary">{label}</Typography>
-          </Box>
-        </Stack>
-      </CardContent>
-    </Card>
-  );
 
   return (
     <>
