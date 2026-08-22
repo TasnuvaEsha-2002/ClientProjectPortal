@@ -63,6 +63,12 @@ public class AuthController : ControllerBase
             return Unauthorized("Your account is pending approval from an administrator.");
         }
 
+        // NEW: Block login if an Admin has deactivated this account
+        if (!user.IsActive)
+        {
+            return Unauthorized("Your account has been deactivated. Please contact an administrator.");
+        }
+
         var token = GenerateJwtToken(user);
 
         return Ok(new
@@ -169,6 +175,70 @@ public class AuthController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Ok(new { message = "User registration rejected and removed." });
+    }
+
+    // GET: api/auth/all-users
+    // Returns every user in the system (approved and pending), for Admin's User Management page
+    [Authorize(Roles = "Admin")]
+    [HttpGet("all-users")]
+    public async Task<ActionResult<IEnumerable<object>>> GetAllUsers()
+    {
+        var users = await _context.Users
+            .Select(u => new
+            {
+                u.Id,
+                u.FullName,
+                u.Email,
+                u.Role,
+                u.IsApproved,
+                u.IsActive
+            })
+            .ToListAsync();
+
+        return Ok(users);
+    }
+
+    // PUT: api/auth/change-role/5
+    // Lets an Admin change a user's system role
+    [Authorize(Roles = "Admin")]
+    [HttpPut("change-role/{id}")]
+    public async Task<IActionResult> ChangeUserRole(int id, [FromBody] string newRole)
+    {
+        var user = await _context.Users.FindAsync(id);
+        if (user == null)
+        {
+            return NotFound();
+        }
+
+        user.Role = newRole;
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Role updated successfully.", user.FullName, user.Role });
+    }
+
+    // PUT: api/auth/toggle-active/5
+    // Lets an Admin activate or deactivate a user's account (soft delete)
+    [Authorize(Roles = "Admin")]
+    [HttpPut("toggle-active/{id}")]
+    public async Task<IActionResult> ToggleUserActive(int id)
+    {
+        var user = await _context.Users.FindAsync(id);
+        if (user == null)
+        {
+            return NotFound();
+        }
+
+        // Prevent an Admin from accidentally deactivating their own account while logged in
+        var callerIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (callerIdClaim != null && int.TryParse(callerIdClaim, out int callerId) && callerId == id)
+        {
+            return BadRequest("You cannot deactivate your own account.");
+        }
+
+        user.IsActive = !user.IsActive;
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = user.IsActive ? "User activated." : "User deactivated.", user.IsActive });
     }
 
     // GET: api/auth/me

@@ -7,8 +7,8 @@ public class User
     public string Email { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
     public string Role { get; set; } = "TeamMember";
-
-    // NEW: tracks whether an Admin has approved this account yet.
-    // Accounts start as false and cannot log in until approved.
     public bool IsApproved { get; set; } = false;
+
+    // NEW: Admin can deactivate an account without permanently deleting it (soft delete)
+    public bool IsActive { get; set; } = true;
 }
