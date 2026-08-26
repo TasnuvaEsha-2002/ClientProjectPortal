@@ -396,9 +396,11 @@ function ProjectsPage({ currentUser }) {
                   </Typography>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Chip label={project.status} color={statusColor(project.status)} size="small" />
+                  {canManageProjects && (  
                     <IconButton size="small" onClick={() => handleCheckRisk(project.id)} color="primary" title="Check Deadline Risk">
                       <AssessmentIcon fontSize="small" />
                     </IconButton>
+                  )}  
                     {canManageProjects && (
                       <IconButton size="small" onClick={() => handleDelete(project.id)} color="error" title="Delete Project">
                         <DeleteIcon fontSize="small" />

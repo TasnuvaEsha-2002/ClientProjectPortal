@@ -137,6 +137,7 @@ public class ProjectsController : ControllerBase
     // GET: api/projects/5/risk-analysis
     // This is our AI-assisted Deadline Risk Prediction feature.
     // It analyzes a project's tasks and milestones to calculate a risk score.
+    [Authorize(Roles = "ProjectManager")]
     [HttpGet("{id}/risk-analysis")]
     public async Task<ActionResult<RiskAnalysisDto>> GetRiskAnalysis(int id)
     {

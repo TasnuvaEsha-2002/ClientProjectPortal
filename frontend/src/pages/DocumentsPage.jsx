@@ -1,6 +1,7 @@
 // This page implements the Document Management module —
-// allowing any logged-in user (including Team Members) to upload files
-// linked to a project and optionally a specific task, and view/download the list.
+// allowing any logged-in user (including Team Members and Clients) to upload
+// files linked to a project and optionally a specific task, and view/download the list.
+// Non-PM/Admin users only see projects/tasks they're actually a member of.
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
@@ -27,12 +28,14 @@ const API_URL = 'http://localhost:5256/api/Documents';
 const PROJECTS_API_URL = 'http://localhost:5256/api/Projects';
 const TASKS_API_URL = 'http://localhost:5256/api/Tasks';
 const USERS_BRIEF_API_URL = 'http://localhost:5256/api/Auth/users-brief';
+const MEMBERS_API_URL = 'http://localhost:5256/api/ProjectMembers';
 
 function DocumentsPage({ currentUser }) {
   const [documents, setDocuments] = useState([]);
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
+  const [myProjectIds, setMyProjectIds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -41,6 +44,9 @@ function DocumentsPage({ currentUser }) {
   const [taskId, setTaskId] = useState('');
 
   const canDelete = currentUser?.role === 'Admin' || currentUser?.role === 'ProjectManager';
+  // Only Admin/ProjectManager can see and choose from ALL projects.
+  // Team Members and Clients should only ever see projects they belong to.
+  const isRestrictedRole = currentUser?.role === 'TeamMember' || currentUser?.role === 'Client';
 
   const fetchDocuments = () => {
     axios.get(API_URL)
@@ -65,7 +71,15 @@ function DocumentsPage({ currentUser }) {
     axios.get(USERS_BRIEF_API_URL)
       .then((response) => setAllUsers(response.data))
       .catch(() => {});
-  }, []);
+
+    // If this user is a Team Member or Client, fetch which projects
+    // they're actually a member of, so we can restrict their dropdown
+    if (isRestrictedRole) {
+      axios.get(`${MEMBERS_API_URL}/my-projects`)
+        .then((response) => setMyProjectIds(response.data))
+        .catch(() => {});
+    }
+  }, [isRestrictedRole]);
 
   const handleUpload = (e) => {
     e.preventDefault();
@@ -117,8 +131,22 @@ function DocumentsPage({ currentUser }) {
     return found ? found.fullName : 'Unknown';
   };
 
-  // Only show tasks belonging to the currently selected project in the task dropdown
-  const tasksForSelectedProject = tasks.filter((t) => t.projectId === Number(projectId));
+  // The list of projects available in the "Project" dropdown:
+  // - Admin/PM see every project
+  // - Team Member/Client only see projects they're a member of
+  const selectableProjects = isRestrictedRole
+    ? projects.filter((p) => myProjectIds.includes(p.id))
+    : projects;
+
+  // For Team Members specifically, only show tasks assigned to them
+  // (within the selected project). Clients/Admin/PM see all tasks in that project.
+  const tasksForSelectedProject = tasks.filter((t) => {
+    if (t.projectId !== Number(projectId)) return false;
+    if (currentUser?.role === 'TeamMember') {
+      return t.assignedUserId === currentUser.id;
+    }
+    return true;
+  });
 
   if (loading) return <Typography sx={{ p: 4 }}>Loading documents...</Typography>;
 
@@ -142,12 +170,18 @@ function DocumentsPage({ currentUser }) {
             value={projectId}
             onChange={(e) => {
               setProjectId(e.target.value);
-              setTaskId(''); // reset task selection when project changes
+              setTaskId('');
             }}
             required
             fullWidth
+            disabled={isRestrictedRole && selectableProjects.length === 0}
+            helperText={
+              isRestrictedRole && selectableProjects.length === 0
+                ? 'You are not assigned to any project yet.'
+                : ''
+            }
           >
-            {projects.map((project) => (
+            {selectableProjects.map((project) => (
               <MenuItem key={project.id} value={project.id}>
                 {project.name}
               </MenuItem>

@@ -38,11 +38,18 @@ import {
 const AUTH_API_URL = 'http://localhost:5256/api/Auth';
 const TASKS_API_URL = 'http://localhost:5256/api/Tasks';
 const PROJECTS_API_URL = 'http://localhost:5256/api/Projects';
+const MILESTONES_API_URL = 'http://localhost:5256/api/Milestones';
 
 // ============================================================
 // ADMIN USERS API
 // ============================================================
 const ADMIN_USERS_API = 'http://localhost:5256/api/Auth/all-users';
+
+// ============================================================
+// CLIENT PROJECTS API
+// ============================================================
+const CLIENT_PROJECTS_API =
+  'http://localhost:5256/api/ProjectMembers/my-projects';
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -97,16 +104,29 @@ function DashboardPage({ currentUser }) {
   const [milestones, setMilestones] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Admin-related states
+  // ============================================================
+  // ADMIN STATES
+  // ============================================================
   const [pendingUsers, setPendingUsers] = useState([]);
   const [allUsersForAdmin, setAllUsersForAdmin] = useState([]);
 
-  // Project Manager AI risk data
+  // ============================================================
+  // CLIENT STATES
+  // ============================================================
+  const [clientProjectIds, setClientProjectIds] = useState([]);
+
+  // ============================================================
+  // PROJECT MANAGER AI RISK DATA
+  // ============================================================
   const [riskByProject, setRiskByProject] = useState({});
 
+  // ============================================================
+  // ROLE CHECKS
+  // ============================================================
   const isAdmin = currentUser?.role === 'Admin';
   const isTeamMember = currentUser?.role === 'TeamMember';
   const isProjectManager = currentUser?.role === 'ProjectManager';
+  const isClient = currentUser?.role === 'Client';
 
   // ============================================================
   // FETCH PENDING USERS
@@ -125,7 +145,7 @@ function DashboardPage({ currentUser }) {
     Promise.all([
       axios.get(PROJECTS_API_URL),
       axios.get(TASKS_API_URL),
-      axios.get('http://localhost:5256/api/Milestones'),
+      axios.get(MILESTONES_API_URL),
     ])
       .then(([projectsRes, tasksRes, milestonesRes]) => {
         setProjects(projectsRes.data);
@@ -150,7 +170,20 @@ function DashboardPage({ currentUser }) {
         })
         .catch(() => {});
     }
-  }, [isAdmin]);
+
+    // ==========================================================
+    // CLIENT DATA
+    // Get project IDs assigned to the logged-in client
+    // ==========================================================
+    if (isClient) {
+      axios
+        .get(CLIENT_PROJECTS_API)
+        .then((response) => {
+          setClientProjectIds(response.data);
+        })
+        .catch(() => {});
+    }
+  }, [isAdmin, isClient]);
 
   // ============================================================
   // PROJECT MANAGER — FETCH AI RISK ANALYSIS
@@ -184,7 +217,6 @@ function DashboardPage({ currentUser }) {
       .then(() => {
         fetchPendingUsers();
 
-        // Refresh all users after approval
         axios
           .get(ADMIN_USERS_API)
           .then((response) => {
@@ -204,7 +236,6 @@ function DashboardPage({ currentUser }) {
       .then(() => {
         fetchPendingUsers();
 
-        // Refresh all users after rejection
         axios
           .get(ADMIN_USERS_API)
           .then((response) => {
@@ -220,11 +251,15 @@ function DashboardPage({ currentUser }) {
   // ============================================================
   const handleQuickComplete = (taskId) => {
     axios
-      .patch(`${TASKS_API_URL}/${taskId}/status`, JSON.stringify('Completed'), {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
+      .patch(
+        `${TASKS_API_URL}/${taskId}/status`,
+        JSON.stringify('Completed'),
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      )
       .then(() => {
         setTasks((prev) =>
           prev.map((t) =>
@@ -285,24 +320,17 @@ function DashboardPage({ currentUser }) {
       (p) => p.status === 'In Progress'
     ).length;
 
-    // Most recently registered users
-    // Highest ID = most recent
     const recentRegistrations = [...allUsersForAdmin]
       .sort((a, b) => Number(b.id) - Number(a.id))
       .slice(0, 5);
 
     return (
       <>
-        {/* ======================================================
-            GREETING
-        ====================================================== */}
         <Typography variant="h5" sx={{ mt: 4, mb: 3 }}>
           {getGreeting()}, {currentUser.fullName.split(' ')[0]} 👋
         </Typography>
 
-        {/* ======================================================
-            PENDING USER APPROVALS
-        ====================================================== */}
+        {/* PENDING USER APPROVALS */}
         {pendingUsers.length > 0 && (
           <>
             <Typography variant="h6" sx={{ mb: 2 }}>
@@ -361,15 +389,12 @@ function DashboardPage({ currentUser }) {
           </>
         )}
 
-        {/* ======================================================
-            SYSTEM OVERVIEW
-        ====================================================== */}
+        {/* SYSTEM OVERVIEW */}
         <Typography variant="h6" sx={{ mb: 2 }}>
           System Overview
         </Typography>
 
         <Grid container spacing={2} sx={{ mb: 4 }}>
-          {/* Total Users */}
           <Grid item xs={6} sm={4}>
             <StatCard
               icon={<AssignmentIcon />}
@@ -379,7 +404,6 @@ function DashboardPage({ currentUser }) {
             />
           </Grid>
 
-          {/* Total Projects */}
           <Grid item xs={6} sm={4}>
             <StatCard
               icon={<FolderIcon />}
@@ -389,7 +413,6 @@ function DashboardPage({ currentUser }) {
             />
           </Grid>
 
-          {/* Active Projects */}
           <Grid item xs={6} sm={4}>
             <StatCard
               icon={<TrendingUpIcon />}
@@ -399,7 +422,6 @@ function DashboardPage({ currentUser }) {
             />
           </Grid>
 
-          {/* Project Managers */}
           <Grid item xs={6} sm={4}>
             <StatCard
               icon={<FolderIcon />}
@@ -409,7 +431,6 @@ function DashboardPage({ currentUser }) {
             />
           </Grid>
 
-          {/* Team Members */}
           <Grid item xs={6} sm={4}>
             <StatCard
               icon={<AssignmentIcon />}
@@ -419,7 +440,6 @@ function DashboardPage({ currentUser }) {
             />
           </Grid>
 
-          {/* Clients */}
           <Grid item xs={6} sm={4}>
             <StatCard
               icon={<FlagIcon />}
@@ -429,7 +449,6 @@ function DashboardPage({ currentUser }) {
             />
           </Grid>
 
-          {/* Pending Registrations */}
           <Grid item xs={12} sm={4}>
             <StatCard
               icon={<WarningIcon />}
@@ -440,9 +459,7 @@ function DashboardPage({ currentUser }) {
           </Grid>
         </Grid>
 
-        {/* ======================================================
-            RECENT REGISTRATIONS
-        ====================================================== */}
+        {/* RECENT REGISTRATIONS */}
         <Typography variant="h6" sx={{ mb: 2 }}>
           Recent Registrations
         </Typography>
@@ -743,6 +760,254 @@ function DashboardPage({ currentUser }) {
   }
 
   // ============================================================
+  // CLIENT DASHBOARD
+  // Project review focused
+  // ============================================================
+  if (isClient) {
+    const myProjects = projects.filter((p) =>
+      clientProjectIds.includes(p.id)
+    );
+
+    const activeCount = myProjects.filter(
+      (p) => p.status === 'In Progress'
+    ).length;
+
+    const completedCount = myProjects.filter(
+      (p) => p.status === 'Completed'
+    ).length;
+
+    const pendingApprovalMilestones = milestones.filter(
+      (m) =>
+        clientProjectIds.includes(m.projectId) &&
+        m.status === 'Completed' &&
+        !m.clientApproved
+    );
+
+    // ==========================================================
+    // CLIENT — APPROVE MILESTONE FROM DASHBOARD
+    // ==========================================================
+    const handleDashboardApprove = (milestoneId) => {
+      axios
+        .patch(
+          `${MILESTONES_API_URL}/${milestoneId}/approve`
+        )
+        .then(() => {
+          setMilestones((prev) =>
+            prev.map((m) =>
+              m.id === milestoneId
+                ? {
+                    ...m,
+                    clientApproved: true,
+                  }
+                : m
+            )
+          );
+        })
+        .catch(() => {});
+    };
+
+    return (
+      <>
+        {/* GREETING */}
+        <Typography
+          variant="h5"
+          sx={{ mt: 4, mb: 3 }}
+        >
+          {getGreeting()}, {currentUser.fullName.split(' ')[0]} 👋
+        </Typography>
+
+        {/* ======================================================
+            CLIENT STATISTICS
+        ====================================================== */}
+        <Grid container spacing={2} sx={{ mb: 4 }}>
+          <Grid item xs={6} sm={3}>
+            <StatCard
+              icon={<FolderIcon />}
+              label="My Projects"
+              value={myProjects.length}
+              color="primary"
+            />
+          </Grid>
+
+          <Grid item xs={6} sm={3}>
+            <StatCard
+              icon={<TrendingUpIcon />}
+              label="Active"
+              value={activeCount}
+              color="info"
+            />
+          </Grid>
+
+          <Grid item xs={6} sm={3}>
+            <StatCard
+              icon={<CheckCircleIcon />}
+              label="Completed"
+              value={completedCount}
+              color="success"
+            />
+          </Grid>
+
+          <Grid item xs={6} sm={3}>
+            <StatCard
+              icon={<FlagIcon />}
+              label="Pending Approvals"
+              value={pendingApprovalMilestones.length}
+              color="warning"
+            />
+          </Grid>
+        </Grid>
+
+        {/* ======================================================
+            PENDING MILESTONE APPROVALS
+        ====================================================== */}
+        {pendingApprovalMilestones.length > 0 && (
+          <>
+            <Typography
+              variant="h6"
+              sx={{ mb: 2 }}
+            >
+              Pending Milestone Approvals
+            </Typography>
+
+            <Stack spacing={2} sx={{ mb: 4 }}>
+              {pendingApprovalMilestones.map((m) => (
+                <Card
+                  key={m.id}
+                  variant="outlined"
+                  sx={{
+                    borderColor: 'warning.main',
+                    borderWidth: 2,
+                  }}
+                >
+                  <CardContent>
+                    <Stack
+                      direction="row"
+                      justifyContent="space-between"
+                      alignItems="center"
+                    >
+                      <Box>
+                        <Typography
+                          variant="body2"
+                          fontWeight="bold"
+                        >
+                          {m.title}
+                        </Typography>
+
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                        >
+                          Project:{' '}
+                          {projects.find(
+                            (p) => p.id === m.projectId
+                          )?.name ||
+                            `#${m.projectId}`}
+                        </Typography>
+                      </Box>
+
+                      <Button
+                        variant="contained"
+                        color="success"
+                        size="small"
+                        onClick={() =>
+                          handleDashboardApprove(m.id)
+                        }
+                      >
+                        Approve
+                      </Button>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              ))}
+            </Stack>
+          </>
+        )}
+
+        {/* ======================================================
+            MY PROJECTS
+        ====================================================== */}
+        <Typography
+          variant="h6"
+          sx={{ mb: 1 }}
+        >
+          My Projects
+        </Typography>
+
+        {myProjects.length === 0 ? (
+          <Typography color="text.secondary">
+            No projects assigned yet.
+          </Typography>
+        ) : (
+          <Card variant="outlined">
+            <CardContent>
+              <Stack spacing={2.5}>
+                {myProjects.map((project) => {
+                  const projectTasks = tasks.filter(
+                    (t) =>
+                      t.projectId === project.id
+                  );
+
+                  const progress =
+                    projectTasks.length === 0
+                      ? 0
+                      : Math.round(
+                          (projectTasks.filter(
+                            (t) =>
+                              t.status === 'Completed'
+                          ).length /
+                            projectTasks.length) *
+                            100
+                        );
+
+                  const statusColor =
+                    project.status === 'Completed'
+                      ? 'success'
+                      : project.status === 'In Progress'
+                      ? 'warning'
+                      : 'default';
+
+                  return (
+                    <Box key={project.id}>
+                      <Stack
+                        direction="row"
+                        justifyContent="space-between"
+                        alignItems="center"
+                      >
+                        <Typography
+                          variant="body2"
+                          fontWeight={500}
+                        >
+                          {project.name}
+                        </Typography>
+
+                        <Chip
+                          label={project.status}
+                          size="small"
+                          color={statusColor}
+                        />
+                      </Stack>
+
+                      <LinearProgress
+                        variant="determinate"
+                        value={progress}
+                        sx={{
+                          borderRadius: 1,
+                          height: 8,
+                          mt: 1,
+                        }}
+                      />
+                    </Box>
+                  );
+                })}
+              </Stack>
+            </CardContent>
+          </Card>
+        )}
+      </>
+    );
+  }
+
+  // ============================================================
   // PROJECT MANAGER DASHBOARD
   // ============================================================
   if (isProjectManager) {
@@ -795,7 +1060,10 @@ function DashboardPage({ currentUser }) {
 
     return (
       <>
-        <Typography variant="h5" sx={{ mt: 4, mb: 3 }}>
+        <Typography
+          variant="h5"
+          sx={{ mt: 4, mb: 3 }}
+        >
           {getGreeting()}, {currentUser.fullName.split(' ')[0]} 👋
         </Typography>
 
@@ -1107,232 +1375,12 @@ function DashboardPage({ currentUser }) {
   }
 
   // ============================================================
-  // CLIENT DASHBOARD
+  // FALLBACK
   // ============================================================
-
-  const activeProjects = projects.filter(
-    (p) => p.status === 'In Progress'
-  ).length;
-
-  const completedProjects = projects.filter(
-    (p) => p.status === 'Completed'
-  ).length;
-
-  const pendingCount = projects.filter(
-    (p) => p.status === 'Pending'
-  ).length;
-
-  const overdueTasksCount = tasks.filter(
-    (t) =>
-      t.dueDate &&
-      new Date(t.dueDate) < new Date() &&
-      t.status !== 'Completed'
-  ).length;
-
-  const pendingApprovals = milestones.filter(
-    (m) =>
-      m.status === 'Completed' &&
-      !m.clientApproved
-  ).length;
-
-  const chartData = [
-    {
-      name: 'Pending',
-      value: pendingCount,
-    },
-    {
-      name: 'In Progress',
-      value: activeProjects,
-    },
-    {
-      name: 'Completed',
-      value: completedProjects,
-    },
-  ].filter((item) => item.value > 0);
-
-  const COLORS = [
-    '#9e9e9e',
-    '#F5A623',
-    '#2E7D32',
-  ];
-
-  const taskStatusData = [
-    {
-      status: 'Not Started',
-      count: tasks.filter(
-        (t) => t.status === 'Not Started'
-      ).length,
-    },
-    {
-      status: 'In Progress',
-      count: tasks.filter(
-        (t) => t.status === 'In Progress'
-      ).length,
-    },
-    {
-      status: 'Completed',
-      count: tasks.filter(
-        (t) => t.status === 'Completed'
-      ).length,
-    },
-  ];
-
   return (
-    <>
-      <Typography
-        variant="h6"
-        sx={{ mt: 4, mb: 3 }}
-      >
-        Overview
-      </Typography>
-
-      <Grid container spacing={2}>
-        <Grid item xs={6}>
-          <StatCard
-            icon={<FolderIcon />}
-            label="Active Projects"
-            value={activeProjects}
-            color="primary"
-          />
-        </Grid>
-
-        <Grid item xs={6}>
-          <StatCard
-            icon={<FolderIcon />}
-            label="Completed Projects"
-            value={completedProjects}
-            color="success"
-          />
-        </Grid>
-
-        <Grid item xs={6}>
-          <StatCard
-            icon={<WarningIcon />}
-            label="Overdue Tasks"
-            value={overdueTasksCount}
-            color="error"
-          />
-        </Grid>
-
-        <Grid item xs={6}>
-          <StatCard
-            icon={<FlagIcon />}
-            label="Pending Approvals"
-            value={pendingApprovals}
-            color="warning"
-          />
-        </Grid>
-
-        <Grid item xs={6}>
-          <StatCard
-            icon={<AssignmentIcon />}
-            label="Total Tasks"
-            value={tasks.length}
-            color="secondary"
-          />
-        </Grid>
-
-        <Grid item xs={6}>
-          <StatCard
-            icon={<FolderIcon />}
-            label="Total Projects"
-            value={projects.length}
-            color="primary"
-          />
-        </Grid>
-      </Grid>
-
-      {/* PROJECT STATUS CHART */}
-      {chartData.length > 0 && (
-        <>
-          <Typography
-            variant="h6"
-            sx={{ mt: 5, mb: 2 }}
-          >
-            Project Status Breakdown
-          </Typography>
-
-          <Card variant="outlined">
-            <CardContent>
-              <ResponsiveContainer
-                width="100%"
-                height={300}
-              >
-                <PieChart>
-                  <Pie
-                    data={chartData}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={100}
-                    label
-                  >
-                    {chartData.map(
-                      (entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={
-                            COLORS[
-                              index % COLORS.length
-                            ]
-                          }
-                        />
-                      )
-                    )}
-                  </Pie>
-
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </>
-      )}
-
-      {/* TASK STATUS CHART */}
-      {tasks.length > 0 && (
-        <>
-          <Typography
-            variant="h6"
-            sx={{ mt: 5, mb: 2 }}
-          >
-            Task Status Overview
-          </Typography>
-
-          <Card variant="outlined">
-            <CardContent>
-              <ResponsiveContainer
-                width="100%"
-                height={300}
-              >
-                <BarChart data={taskStatusData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-
-                  <XAxis dataKey="status" />
-
-                  <YAxis allowDecimals={false} />
-
-                  <Tooltip />
-
-                  <Bar
-                    dataKey="count"
-                    fill="#2E5EAA"
-                    radius={[
-                      6,
-                      6,
-                      0,
-                      0,
-                    ]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </>
-      )}
-    </>
+    <Typography sx={{ p: 4 }}>
+      No dashboard available for this role.
+    </Typography>
   );
 }
 
