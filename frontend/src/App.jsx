@@ -21,12 +21,17 @@ function Navigation({ user, onLogout }) {
 
   return (
     <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }} flexWrap="wrap">
-      <Tabs value={location.pathname}>
+            <Tabs value={location.pathname}>
         <Tab label="Dashboard" value="/" component={Link} to="/" />
         <Tab label="Projects" value="/projects" component={Link} to="/projects" />
-        <Tab label="Tasks" value="/tasks" component={Link} to="/tasks" />
-        <Tab label="Milestones" value="/milestones" component={Link} to="/milestones" />
-        <Tab label="Documents" value="/documents" component={Link} to="/documents" />
+        {/* Admin doesn't manage Tasks/Milestones/Documents directly — those belong to PM/TeamMember/Client */}
+        {user.role !== 'Admin' && (
+          <>
+            <Tab label="Tasks" value="/tasks" component={Link} to="/tasks" />
+            <Tab label="Milestones" value="/milestones" component={Link} to="/milestones" />
+            <Tab label="Documents" value="/documents" component={Link} to="/documents" />
+          </>
+        )}
         {user.role === 'Admin' && (
           <Tab label="Users" value="/users" component={Link} to="/users" />
         )}

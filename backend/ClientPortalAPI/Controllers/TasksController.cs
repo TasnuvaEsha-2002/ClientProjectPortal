@@ -39,7 +39,7 @@ public class TasksController : ControllerBase
     }
 
     // POST: api/tasks
-    [Authorize(Roles = "Admin,ProjectManager")]
+    [Authorize(Roles = "ProjectManager")]
     [HttpPost]
     public async Task<ActionResult<TaskItem>> CreateTask(TaskItem task)
     {
@@ -69,7 +69,7 @@ public class TasksController : ControllerBase
     }
 
     // PUT: api/tasks/5
-    [Authorize(Roles = "Admin,ProjectManager")]
+    [Authorize(Roles = "ProjectManager")]
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateTask(int id, TaskItem task)
     {
@@ -111,7 +111,7 @@ public class TasksController : ControllerBase
     }
 
     // DELETE: api/tasks/5
-    [Authorize(Roles = "Admin,ProjectManager")]
+    [Authorize(Roles = "ProjectManager")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteTask(int id)
     {

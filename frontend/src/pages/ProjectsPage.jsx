@@ -18,6 +18,12 @@ import {
   List,
   ListItem,
   ListItemText,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  LinearProgress,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AssessmentIcon from '@mui/icons-material/Assessment';
@@ -49,7 +55,11 @@ function ProjectsPage({ currentUser }) {
   const [impactData, setImpactData] = useState(null);
   const [impactDialogOpen, setImpactDialogOpen] = useState(false);
 
-  const canManageProjects = currentUser?.role === 'Admin' || currentUser?.role === 'ProjectManager';
+  // ---- Admin-only monitoring data ----
+  const [adminOverview, setAdminOverview] = useState([]);
+
+  const isAdmin = currentUser?.role === 'Admin';
+  const canManageProjects = currentUser?.role === 'ProjectManager';
   const isTeamMemberOrClient = currentUser?.role === 'TeamMember' || currentUser?.role === 'Client';
 
   const fetchProjects = () => {
@@ -65,21 +75,33 @@ function ProjectsPage({ currentUser }) {
   };
 
   useEffect(() => {
+    if (isAdmin) {
+      // Admin uses a completely different endpoint that already includes
+      // PM name, Client name, and progress — no need for the regular project list
+      axios.get(`${API_URL}/admin-overview`)
+        .then((response) => {
+          setAdminOverview(response.data);
+          setLoading(false);
+        })
+        .catch((err) => {
+          setError(err.message);
+          setLoading(false);
+        });
+      return;
+    }
+
     fetchProjects();
     axios.get(USERS_BRIEF_API_URL)
       .then((response) => setAllUsers(response.data))
       .catch(() => {});
 
-    // Team Members/Clients need to know which projects they belong to,
-    // so we can filter the list to only show relevant projects
     if (isTeamMemberOrClient) {
       axios.get(`${MEMBERS_API_URL}/my-projects`)
         .then((response) => setMyProjectIds(response.data))
         .catch(() => {});
     }
-  }, [isTeamMemberOrClient]);
+  }, [isAdmin, isTeamMemberOrClient]);
 
-  // Creates the project, then adds each selected member to it
   const handleSubmit = (e) => {
     e.preventDefault();
 
@@ -95,11 +117,9 @@ function ProjectsPage({ currentUser }) {
     axios.post(API_URL, newProject)
       .then((response) => {
         const createdProjectId = response.data.id;
-
         const addMemberPromises = selectedMemberIds.map((userId) =>
           axios.post(MEMBERS_API_URL, { projectId: createdProjectId, userId })
         );
-
         return Promise.all(addMemberPromises);
       })
       .then(() => {
@@ -173,15 +193,75 @@ function ProjectsPage({ currentUser }) {
 
   if (loading) return <Typography sx={{ p: 4 }}>Loading projects...</Typography>;
 
-  // Filter the visible project list: Admin/PM see everything,
-  // Team Members/Clients only see projects they're a member of
+  // ============================================================
+  // ADMIN VIEW — read-only monitoring table, no forms or actions
+  // ============================================================
+  if (isAdmin) {
+    return (
+      <>
+        <Typography variant="h6" sx={{ mt: 4, mb: 2 }}>
+          All Projects (Monitoring)
+        </Typography>
+
+        {error && (
+          <Typography color="error" sx={{ mb: 2 }}>
+            {error}
+          </Typography>
+        )}
+
+        {adminOverview.length === 0 ? (
+          <Typography color="text.secondary">No projects in the system yet.</Typography>
+        ) : (
+          <Card variant="outlined">
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell><strong>Project Name</strong></TableCell>
+                  <TableCell><strong>Project Manager</strong></TableCell>
+                  <TableCell><strong>Client</strong></TableCell>
+                  <TableCell><strong>Status</strong></TableCell>
+                  <TableCell><strong>Progress</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {adminOverview.map((project) => (
+                  <TableRow key={project.id}>
+                    <TableCell>{project.name}</TableCell>
+                    <TableCell>{project.projectManager}</TableCell>
+                    <TableCell>{project.client}</TableCell>
+                    <TableCell>
+                      <Chip label={project.status} color={statusColor(project.status)} size="small" />
+                    </TableCell>
+                    <TableCell sx={{ width: 160 }}>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <LinearProgress
+                          variant="determinate"
+                          value={project.progress}
+                          sx={{ flexGrow: 1, height: 6, borderRadius: 1 }}
+                        />
+                        <Typography variant="caption">{project.progress}%</Typography>
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        )}
+      </>
+    );
+  }
+
+  // ============================================================
+  // PROJECT MANAGER / TEAM MEMBER / CLIENT VIEW
+  // ============================================================
+
   const visibleProjects = isTeamMemberOrClient
     ? projects.filter((p) => myProjectIds.includes(p.id))
     : projects;
 
   return (
     <>
-      {/* ---------- CREATE PROJECT FORM (Admin/ProjectManager only) ---------- */}
       {canManageProjects && (
         <>
           <Typography variant="h6" sx={{ mt: 4, mb: 2 }}>
@@ -253,7 +333,6 @@ function ProjectsPage({ currentUser }) {
             </Stack>
           </Box>
 
-          {/* ---------- REQUIREMENT CHANGE IMPACT ANALYSIS FORM ---------- */}
           <Typography variant="h6" sx={{ mt: 5, mb: 2 }}>
             Analyze Requirement Change (AI-Assisted)
           </Typography>
@@ -298,7 +377,6 @@ function ProjectsPage({ currentUser }) {
         </Typography>
       )}
 
-      {/* ---------- PROJECT LIST ---------- */}
       <Typography variant="h6" sx={{ mt: 5, mb: 2 }}>
         Projects
       </Typography>
@@ -337,7 +415,6 @@ function ProjectsPage({ currentUser }) {
         </Stack>
       )}
 
-      {/* ---------- RISK ANALYSIS POPUP DIALOG ---------- */}
       <Dialog open={riskDialogOpen} onClose={() => setRiskDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Deadline Risk Analysis {riskData && `- ${riskData.projectName}`}</DialogTitle>
         <DialogContent>
@@ -373,7 +450,6 @@ function ProjectsPage({ currentUser }) {
         </DialogActions>
       </Dialog>
 
-      {/* ---------- IMPACT ANALYSIS POPUP DIALOG ---------- */}
       <Dialog open={impactDialogOpen} onClose={() => setImpactDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Requirement Change Impact Analysis</DialogTitle>
         <DialogContent>

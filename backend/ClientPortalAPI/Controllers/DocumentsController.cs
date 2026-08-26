@@ -122,7 +122,7 @@ public class DocumentsController : ControllerBase
     }
 
     // DELETE: api/documents/5
-    [Authorize(Roles = "Admin,ProjectManager")]
+    [Authorize(Roles = "ProjectManager")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteDocument(int id)
     {

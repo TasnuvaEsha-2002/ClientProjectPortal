@@ -38,8 +38,61 @@ public class ProjectsController : ControllerBase
         return project;
     }
 
+        // GET: api/projects/admin-overview
+    // Returns all projects with their PM and Client names attached,
+    // plus a calculated progress %. Used only by Admin's monitoring view.
+    [Authorize(Roles = "Admin")]
+    [HttpGet("admin-overview")]
+    public async Task<ActionResult<IEnumerable<object>>> GetAdminOverview()
+    {
+        var projects = await _context.Projects.ToListAsync();
+        var result = new List<object>();
+
+        foreach (var project in projects)
+        {
+            // Find members of this project who are PM or Client
+            var members = await _context.ProjectMembers
+                .Where(pm => pm.ProjectId == project.Id)
+                .Include(pm => pm.User)
+                .ToListAsync();
+
+            var pmName = members.FirstOrDefault(m => m.User!.Role == "ProjectManager")?.User?.FullName ?? "—";
+            var clientName = members.FirstOrDefault(m => m.User!.Role == "Client")?.User?.FullName ?? "—";
+
+                        // Calculate progress based on this project's tasks.
+            // If the project itself is marked Completed, always show 100%
+            // regardless of task data (the PM's manual status takes priority).
+            var tasks = await _context.Tasks.Where(t => t.ProjectId == project.Id).ToListAsync();
+            int progress;
+            if (project.Status == "Completed")
+            {
+                progress = 100;
+            }
+            else if (tasks.Count == 0)
+            {
+                progress = 0;
+            }
+            else
+            {
+                progress = (int)Math.Round((double)tasks.Count(t => t.Status == "Completed") / tasks.Count * 100);
+            }
+
+            result.Add(new
+            {
+                project.Id,
+                project.Name,
+                ProjectManager = pmName,
+                Client = clientName,
+                project.Status,
+                Progress = progress
+            });
+        }
+
+        return Ok(result);
+    }
+
     // POST: api/projects
-    [Authorize(Roles = "Admin,ProjectManager")]
+    [Authorize(Roles = "ProjectManager")]
     [HttpPost]
     public async Task<ActionResult<Project>> CreateProject(Project project)
     {
@@ -50,7 +103,7 @@ public class ProjectsController : ControllerBase
     }
 
     // PUT: api/projects/5
-    [Authorize(Roles = "Admin,ProjectManager")]
+    [Authorize(Roles = "ProjectManager")]
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateProject(int id, Project project)
     {
@@ -66,7 +119,7 @@ public class ProjectsController : ControllerBase
     }
 
     // DELETE: api/projects/5
-    [Authorize(Roles = "Admin,ProjectManager")]
+    [Authorize(Roles = "ProjectManager")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteProject(int id)
     {
@@ -193,7 +246,7 @@ public class ProjectsController : ControllerBase
     // This is our second AI-assisted feature: Requirement Change Impact Analysis.
     // The Project Manager submits a plain-text requirement, and we estimate its impact
     // by checking which keywords match existing tasks/modules.
-    [Authorize(Roles = "Admin,ProjectManager")]
+    [Authorize(Roles = "ProjectManager")]
     [HttpPost("impact-analysis")]
     public async Task<ActionResult<ImpactAnalysisDto>> AnalyzeRequirementChange(RequirementChangeDto request)
     {
