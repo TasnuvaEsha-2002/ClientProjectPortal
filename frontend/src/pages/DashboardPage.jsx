@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import * as XLSX from 'xlsx';
+
 import {
   Typography,
   Grid,
@@ -11,6 +14,15 @@ import {
   Chip,
   Checkbox,
   LinearProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  IconButton,
 } from '@mui/material';
 
 import FolderIcon from '@mui/icons-material/Folder';
@@ -20,6 +32,9 @@ import WarningIcon from '@mui/icons-material/Warning';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
+import DownloadIcon from '@mui/icons-material/Download';
 
 import {
   PieChart,
@@ -39,33 +54,33 @@ const AUTH_API_URL = 'http://localhost:5256/api/Auth';
 const TASKS_API_URL = 'http://localhost:5256/api/Tasks';
 const PROJECTS_API_URL = 'http://localhost:5256/api/Projects';
 const MILESTONES_API_URL = 'http://localhost:5256/api/Milestones';
+const DOCUMENTS_API_URL = 'http://localhost:5256/api/Documents';
 
-// ============================================================
-// ADMIN USERS API
-// ============================================================
 const ADMIN_USERS_API = 'http://localhost:5256/api/Auth/all-users';
-
-// ============================================================
-// CLIENT PROJECTS API
-// ============================================================
-const CLIENT_PROJECTS_API =
-  'http://localhost:5256/api/ProjectMembers/my-projects';
+const CLIENT_PROJECTS_API = 'http://localhost:5256/api/ProjectMembers/my-projects';
 
 function getGreeting() {
   const hour = new Date().getHours();
-
   if (hour < 12) return 'Good Morning';
   if (hour < 17) return 'Good Afternoon';
-
   return 'Good Evening';
 }
 
 // ============================================================
 // REUSABLE STAT CARD
 // ============================================================
-function StatCard({ icon, label, value, color }) {
+function StatCard({ icon, label, value, color, onClick }) {
   return (
-    <Card variant="outlined" sx={{ height: '100%' }}>
+    <Card
+      variant="outlined"
+      sx={{
+        height: '100%',
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'transform 0.15s, box-shadow 0.15s',
+        '&:hover': onClick ? { transform: 'translateY(-2px)', boxShadow: 3 } : {},
+      }}
+      onClick={onClick}
+    >
       <CardContent>
         <Stack direction="row" spacing={2} alignItems="center">
           <Box
@@ -79,15 +94,9 @@ function StatCard({ icon, label, value, color }) {
           >
             {icon}
           </Box>
-
           <Box>
-            <Typography variant="h5" fontWeight="bold">
-              {value}
-            </Typography>
-
-            <Typography variant="body2" color="text.secondary">
-              {label}
-            </Typography>
+            <Typography variant="h5" fontWeight="bold">{value}</Typography>
+            <Typography variant="body2" color="text.secondary">{label}</Typography>
           </Box>
         </Stack>
       </CardContent>
@@ -99,48 +108,42 @@ function StatCard({ icon, label, value, color }) {
 // DASHBOARD PAGE
 // ============================================================
 function DashboardPage({ currentUser }) {
+  const navigate = useNavigate();
+
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [milestones, setMilestones] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // ============================================================
   // ADMIN STATES
-  // ============================================================
   const [pendingUsers, setPendingUsers] = useState([]);
   const [allUsersForAdmin, setAllUsersForAdmin] = useState([]);
 
-  // ============================================================
   // CLIENT STATES
-  // ============================================================
   const [clientProjectIds, setClientProjectIds] = useState([]);
 
-  // ============================================================
+  // CLIENT MILESTONE APPROVAL DIALOG
+  const [milestoneReviewOpen, setMilestoneReviewOpen] = useState(false);
+  const [milestoneToReview, setMilestoneToReview] = useState(null);
+  // NEW: documents attached to the milestone currently being reviewed
+  const [milestoneDocuments, setMilestoneDocuments] = useState([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+
   // PROJECT MANAGER AI RISK DATA
-  // ============================================================
   const [riskByProject, setRiskByProject] = useState({});
 
-  // ============================================================
   // ROLE CHECKS
-  // ============================================================
   const isAdmin = currentUser?.role === 'Admin';
   const isTeamMember = currentUser?.role === 'TeamMember';
   const isProjectManager = currentUser?.role === 'ProjectManager';
   const isClient = currentUser?.role === 'Client';
 
-  // ============================================================
-  // FETCH PENDING USERS
-  // ============================================================
   const fetchPendingUsers = () => {
-    axios
-      .get(`${AUTH_API_URL}/pending-users`)
+    axios.get(`${AUTH_API_URL}/pending-users`)
       .then((response) => setPendingUsers(response.data))
       .catch(() => {});
   };
 
-  // ============================================================
-  // FETCH DASHBOARD DATA
-  // ============================================================
   useEffect(() => {
     Promise.all([
       axios.get(PROJECTS_API_URL),
@@ -153,176 +156,145 @@ function DashboardPage({ currentUser }) {
         setMilestones(milestonesRes.data);
         setLoading(false);
       })
-      .catch(() => {
-        setLoading(false);
-      });
+      .catch(() => setLoading(false));
 
-    // ==========================================================
-    // ADMIN DATA
-    // ==========================================================
     if (isAdmin) {
       fetchPendingUsers();
-
-      axios
-        .get(ADMIN_USERS_API)
-        .then((response) => {
-          setAllUsersForAdmin(response.data);
-        })
+      axios.get(ADMIN_USERS_API)
+        .then((response) => setAllUsersForAdmin(response.data))
         .catch(() => {});
     }
 
-    // ==========================================================
-    // CLIENT DATA
-    // Get project IDs assigned to the logged-in client
-    // ==========================================================
     if (isClient) {
-      axios
-        .get(CLIENT_PROJECTS_API)
-        .then((response) => {
-          setClientProjectIds(response.data);
-        })
+      axios.get(CLIENT_PROJECTS_API)
+        .then((response) => setClientProjectIds(response.data))
         .catch(() => {});
     }
   }, [isAdmin, isClient]);
 
-  // ============================================================
-  // PROJECT MANAGER — FETCH AI RISK ANALYSIS
-  // ============================================================
   useEffect(() => {
     if (isProjectManager && projects.length > 0) {
       projects.forEach((project) => {
-        axios
-          .get(`${PROJECTS_API_URL}/${project.id}/risk-analysis`)
+        axios.get(`${PROJECTS_API_URL}/${project.id}/risk-analysis`)
           .then((response) => {
-            setRiskByProject((prev) => ({
-              ...prev,
-              [project.id]: response.data,
-            }));
+            setRiskByProject((prev) => ({ ...prev, [project.id]: response.data }));
           })
           .catch(() => {});
       });
     }
   }, [isProjectManager, projects]);
 
-  // ============================================================
-  // ADMIN — APPROVE USER
-  // ============================================================
   const handleApprove = (userId) => {
-    axios
-      .put(`${AUTH_API_URL}/approve/${userId}`, null, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
+    axios.put(`${AUTH_API_URL}/approve/${userId}`, null, {
+      headers: { 'Content-Type': 'application/json' },
+    })
       .then(() => {
         fetchPendingUsers();
-
-        axios
-          .get(ADMIN_USERS_API)
-          .then((response) => {
-            setAllUsersForAdmin(response.data);
-          })
+        axios.get(ADMIN_USERS_API)
+          .then((response) => setAllUsersForAdmin(response.data))
           .catch(() => {});
       })
       .catch(() => {});
   };
 
-  // ============================================================
-  // ADMIN — REJECT USER
-  // ============================================================
   const handleReject = (userId) => {
-    axios
-      .delete(`${AUTH_API_URL}/reject/${userId}`)
+    axios.delete(`${AUTH_API_URL}/reject/${userId}`)
       .then(() => {
         fetchPendingUsers();
-
-        axios
-          .get(ADMIN_USERS_API)
-          .then((response) => {
-            setAllUsersForAdmin(response.data);
-          })
+        axios.get(ADMIN_USERS_API)
+          .then((response) => setAllUsersForAdmin(response.data))
           .catch(() => {});
       })
       .catch(() => {});
   };
 
-  // ============================================================
-  // TEAM MEMBER — QUICK COMPLETE TASK
-  // ============================================================
   const handleQuickComplete = (taskId) => {
-    axios
-      .patch(
-        `${TASKS_API_URL}/${taskId}/status`,
-        JSON.stringify('Completed'),
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      )
+    axios.patch(`${TASKS_API_URL}/${taskId}/status`, JSON.stringify('Completed'), {
+      headers: { 'Content-Type': 'application/json' },
+    })
       .then(() => {
         setTasks((prev) =>
-          prev.map((t) =>
-            t.id === taskId
-              ? {
-                  ...t,
-                  status: 'Completed',
-                  completionPercentage: 100,
-                }
-              : t
-          )
+          prev.map((t) => (t.id === taskId ? { ...t, status: 'Completed', completionPercentage: 100 } : t))
         );
       })
       .catch(() => {});
   };
 
-  // ============================================================
-  // LOADING
-  // ============================================================
+  const handleExportReport = () => {
+    const reportData = projects.map((project) => {
+      const projectTasks = tasks.filter((t) => t.projectId === project.id);
+      const completedTasks = projectTasks.filter((t) => t.status === 'Completed').length;
+      const progress = projectTasks.length === 0 ? 0 : Math.round((completedTasks / projectTasks.length) * 100);
+
+      return {
+        'Project Name': project.name,
+        Description: project.description,
+        Status: project.status,
+        'Progress (%)': progress,
+        'Start Date': project.startDate ? new Date(project.startDate).toLocaleDateString() : '',
+        Deadline: project.deadline ? new Date(project.deadline).toLocaleDateString() : '',
+        'Total Tasks': projectTasks.length,
+        'Completed Tasks': completedTasks,
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(reportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Project Report');
+
+    worksheet['!cols'] = [
+      { wch: 25 }, { wch: 35 }, { wch: 12 }, { wch: 14 },
+      { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 16 },
+    ];
+
+    const dateStr = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(workbook, `Project_Report_${dateStr}.xlsx`);
+  };
+
+  // Downloads a document attached to the milestone being reviewed
+  const handleDownloadDocument = (docId) => {
+    window.open(`${DOCUMENTS_API_URL}/${docId}/download`, '_blank');
+  };
+
   if (loading) {
-    return (
-      <Typography sx={{ p: 4 }}>
-        Loading dashboard...
-      </Typography>
-    );
+    return <Typography sx={{ p: 4 }}>Loading dashboard...</Typography>;
   }
 
-  // ============================================================
-  // RISK COLOR HELPER
-  // ============================================================
   const riskColor = (level) => {
     if (level === 'High') return 'error';
     if (level === 'Medium') return 'warning';
-
     return 'success';
   };
 
   // ============================================================
   // ADMIN DASHBOARD
-  // System-wide overview
   // ============================================================
   if (isAdmin) {
     const totalUsers = allUsersForAdmin.length;
-
-    const pmCount = allUsersForAdmin.filter(
-      (u) => u.role === 'ProjectManager'
-    ).length;
-
-    const tmCount = allUsersForAdmin.filter(
-      (u) => u.role === 'TeamMember'
-    ).length;
-
-    const clientCount = allUsersForAdmin.filter(
-      (u) => u.role === 'Client'
-    ).length;
-
-    const activeProjectsCount = projects.filter(
-      (p) => p.status === 'In Progress'
-    ).length;
+    const adminCount = allUsersForAdmin.filter((u) => u.role === 'Admin').length;
+    const pmCount = allUsersForAdmin.filter((u) => u.role === 'ProjectManager').length;
+    const tmCount = allUsersForAdmin.filter((u) => u.role === 'TeamMember').length;
+    const clientCount = allUsersForAdmin.filter((u) => u.role === 'Client').length;
+    const activeProjectsCount = projects.filter((p) => p.status === 'In Progress').length;
 
     const recentRegistrations = [...allUsersForAdmin]
       .sort((a, b) => Number(b.id) - Number(a.id))
       .slice(0, 5);
+
+    const roleDistributionData = [
+      { role: 'Admins', count: adminCount },
+      { role: 'PMs', count: pmCount },
+      { role: 'Team Members', count: tmCount },
+      { role: 'Clients', count: clientCount },
+    ];
+
+    const projectStatusData = [
+      { name: 'Pending', value: projects.filter((p) => p.status === 'Pending').length },
+      { name: 'In Progress', value: activeProjectsCount },
+      { name: 'Completed', value: projects.filter((p) => p.status === 'Completed').length },
+    ].filter((item) => item.value > 0);
+
+    const STATUS_COLORS = ['#9e9e9e', '#F5A623', '#2E7D32'];
 
     return (
       <>
@@ -330,56 +302,32 @@ function DashboardPage({ currentUser }) {
           {getGreeting()}, {currentUser.fullName.split(' ')[0]} 👋
         </Typography>
 
-        {/* PENDING USER APPROVALS */}
+        <Button
+          variant="outlined"
+          startIcon={<FileDownloadIcon />}
+          onClick={handleExportReport}
+          sx={{ mb: 3 }}
+        >
+          Export System Report (Excel)
+        </Button>
+
         {pendingUsers.length > 0 && (
           <>
-            <Typography variant="h6" sx={{ mb: 2 }}>
-              Pending User Approvals
-            </Typography>
-
+            <Typography variant="h6" sx={{ mb: 2 }}>Pending User Approvals</Typography>
             <Stack spacing={2} sx={{ mb: 4 }}>
               {pendingUsers.map((user) => (
                 <Card key={user.id} variant="outlined">
                   <CardContent>
-                    <Stack
-                      direction="row"
-                      justifyContent="space-between"
-                      alignItems="center"
-                      flexWrap="wrap"
-                      gap={2}
-                    >
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
                       <Box>
-                        <Typography
-                          variant="subtitle1"
-                          fontWeight="bold"
-                        >
-                          {user.fullName}
-                        </Typography>
-
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                        >
+                        <Typography variant="subtitle1" fontWeight="bold">{user.fullName}</Typography>
+                        <Typography variant="body2" color="text.secondary">
                           {user.email} — requested role: {user.role}
                         </Typography>
                       </Box>
-
                       <Stack direction="row" spacing={2}>
-                        <Button
-                          variant="contained"
-                          color="success"
-                          onClick={() => handleApprove(user.id)}
-                        >
-                          Approve
-                        </Button>
-
-                        <Button
-                          variant="outlined"
-                          color="error"
-                          onClick={() => handleReject(user.id)}
-                        >
-                          Reject
-                        </Button>
+                        <Button variant="contained" color="success" onClick={() => handleApprove(user.id)}>Approve</Button>
+                        <Button variant="outlined" color="error" onClick={() => handleReject(user.id)}>Reject</Button>
                       </Stack>
                     </Stack>
                   </CardContent>
@@ -389,116 +337,90 @@ function DashboardPage({ currentUser }) {
           </>
         )}
 
-        {/* SYSTEM OVERVIEW */}
-        <Typography variant="h6" sx={{ mb: 2 }}>
-          System Overview
-        </Typography>
-
+        <Typography variant="h6" sx={{ mb: 2 }}>System Overview</Typography>
         <Grid container spacing={2} sx={{ mb: 4 }}>
           <Grid item xs={6} sm={4}>
-            <StatCard
-              icon={<AssignmentIcon />}
-              label="Total Users"
-              value={totalUsers}
-              color="primary"
-            />
+            <StatCard icon={<AssignmentIcon />} label="Total Users" value={totalUsers} color="primary" onClick={() => navigate('/users')} />
           </Grid>
-
           <Grid item xs={6} sm={4}>
-            <StatCard
-              icon={<FolderIcon />}
-              label="Total Projects"
-              value={projects.length}
-              color="secondary"
-            />
+            <StatCard icon={<FolderIcon />} label="Total Projects" value={projects.length} color="secondary" onClick={() => navigate('/projects')} />
           </Grid>
-
           <Grid item xs={6} sm={4}>
-            <StatCard
-              icon={<TrendingUpIcon />}
-              label="Active Projects"
-              value={activeProjectsCount}
-              color="info"
-            />
+            <StatCard icon={<TrendingUpIcon />} label="Active Projects" value={activeProjectsCount} color="info" onClick={() => navigate('/projects')} />
           </Grid>
-
           <Grid item xs={6} sm={4}>
-            <StatCard
-              icon={<FolderIcon />}
-              label="Project Managers"
-              value={pmCount}
-              color="primary"
-            />
+            <StatCard icon={<FolderIcon />} label="Project Managers" value={pmCount} color="primary" onClick={() => navigate('/users')} />
           </Grid>
-
           <Grid item xs={6} sm={4}>
-            <StatCard
-              icon={<AssignmentIcon />}
-              label="Team Members"
-              value={tmCount}
-              color="success"
-            />
+            <StatCard icon={<AssignmentIcon />} label="Team Members" value={tmCount} color="success" onClick={() => navigate('/users')} />
           </Grid>
-
           <Grid item xs={6} sm={4}>
-            <StatCard
-              icon={<FlagIcon />}
-              label="Clients"
-              value={clientCount}
-              color="warning"
-            />
+            <StatCard icon={<FlagIcon />} label="Clients" value={clientCount} color="warning" onClick={() => navigate('/users')} />
           </Grid>
-
           <Grid item xs={12} sm={4}>
-            <StatCard
-              icon={<WarningIcon />}
-              label="Pending Registrations"
-              value={pendingUsers.length}
-              color="error"
-            />
+            <StatCard icon={<WarningIcon />} label="Pending Registrations" value={pendingUsers.length} color="error" onClick={() => navigate('/users')} />
           </Grid>
         </Grid>
 
-        {/* RECENT REGISTRATIONS */}
-        <Typography variant="h6" sx={{ mb: 2 }}>
-          Recent Registrations
-        </Typography>
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12} md={6}>
+            <Card variant="outlined">
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 2 }}>User Role Distribution</Typography>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={roleDistributionData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="role" />
+                    <YAxis allowDecimals={false} />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="count" name="Users" fill="#2E5EAA" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </Grid>
 
+          <Grid item xs={12} md={6}>
+            <Card variant="outlined">
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 2 }}>Project Status Distribution</Typography>
+                {projectStatusData.length === 0 ? (
+                  <Typography color="text.secondary" sx={{ textAlign: 'center', py: 10 }}>
+                    No project data available.
+                  </Typography>
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie data={projectStatusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label>
+                        {projectStatusData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={STATUS_COLORS[index % STATUS_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+
+        <Typography variant="h6" sx={{ mb: 2 }}>Recent Registrations</Typography>
         {recentRegistrations.length === 0 ? (
-          <Typography color="text.secondary">
-            No registrations yet.
-          </Typography>
+          <Typography color="text.secondary">No registrations yet.</Typography>
         ) : (
           <Card variant="outlined">
             <CardContent>
               <Stack spacing={1.5}>
                 {recentRegistrations.map((user) => (
-                  <Stack
-                    key={user.id}
-                    direction="row"
-                    justifyContent="space-between"
-                    alignItems="center"
-                  >
+                  <Stack key={user.id} direction="row" justifyContent="space-between" alignItems="center">
                     <Box>
-                      <Typography
-                        variant="body2"
-                        fontWeight={500}
-                      >
-                        {user.fullName}
-                      </Typography>
-
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                      >
-                        {user.email}
-                      </Typography>
+                      <Typography variant="body2" fontWeight={500}>{user.fullName}</Typography>
+                      <Typography variant="caption" color="text.secondary">{user.email}</Typography>
                     </Box>
-
-                    <Chip
-                      label={user.role}
-                      size="small"
-                    />
+                    <Chip label={user.role} size="small" />
                   </Stack>
                 ))}
               </Stack>
@@ -513,54 +435,29 @@ function DashboardPage({ currentUser }) {
   // TEAM MEMBER DASHBOARD
   // ============================================================
   if (isTeamMember) {
-    const myTasks = tasks.filter(
-      (t) => t.assignedUserId === currentUser?.id
-    );
-
-    const completedCount = myTasks.filter(
-      (t) => t.status === 'Completed'
-    ).length;
-
-    const inProgressCount = myTasks.filter(
-      (t) => t.status === 'In Progress'
-    ).length;
+    const myTasks = tasks.filter((t) => t.assignedUserId === currentUser?.id);
+    const completedCount = myTasks.filter((t) => t.status === 'Completed').length;
+    const inProgressCount = myTasks.filter((t) => t.status === 'In Progress').length;
 
     const now = new Date();
     const todayStr = now.toDateString();
 
     const overdueTasks = myTasks.filter(
-      (t) =>
-        t.dueDate &&
-        new Date(t.dueDate) < now &&
-        t.status !== 'Completed'
+      (t) => t.dueDate && new Date(t.dueDate) < now && t.status !== 'Completed'
     );
 
     const todaysTasks = myTasks.filter(
       (t) =>
         t.status !== 'Completed' &&
-        ((t.dueDate &&
-          new Date(t.dueDate).toDateString() === todayStr) ||
-          t.status === 'In Progress')
+        ((t.dueDate && new Date(t.dueDate).toDateString() === todayStr) || t.status === 'In Progress')
     );
 
     const upcomingDeadlines = myTasks
-      .filter(
-        (t) =>
-          t.dueDate &&
-          new Date(t.dueDate) >= now &&
-          t.status !== 'Completed'
-      )
-      .sort(
-        (a, b) =>
-          new Date(a.dueDate) - new Date(b.dueDate)
-      )
+      .filter((t) => t.dueDate && new Date(t.dueDate) >= now && t.status !== 'Completed')
+      .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
       .slice(0, 5);
 
-    const daysLate = (dueDate) =>
-      Math.floor(
-        (now - new Date(dueDate)) /
-          (1000 * 60 * 60 * 24)
-      );
+    const daysLate = (dueDate) => Math.floor((now - new Date(dueDate)) / (1000 * 60 * 60 * 24));
 
     return (
       <>
@@ -570,90 +467,35 @@ function DashboardPage({ currentUser }) {
 
         <Grid container spacing={2} sx={{ mb: 4 }}>
           <Grid item xs={4}>
-            <StatCard
-              icon={<AssignmentIcon />}
-              label="My Tasks"
-              value={myTasks.length}
-              color="primary"
-            />
+            <StatCard icon={<AssignmentIcon />} label="My Tasks" value={myTasks.length} color="primary" onClick={() => navigate('/tasks')} />
           </Grid>
-
           <Grid item xs={4}>
-            <StatCard
-              icon={<CheckCircleIcon />}
-              label="Completed"
-              value={completedCount}
-              color="success"
-            />
+            <StatCard icon={<CheckCircleIcon />} label="Completed" value={completedCount} color="success" onClick={() => navigate('/tasks')} />
           </Grid>
-
           <Grid item xs={4}>
-            <StatCard
-              icon={<TrendingUpIcon />}
-              label="In Progress"
-              value={inProgressCount}
-              color="warning"
-            />
+            <StatCard icon={<TrendingUpIcon />} label="In Progress" value={inProgressCount} color="warning" onClick={() => navigate('/tasks')} />
           </Grid>
         </Grid>
 
         {overdueTasks.length > 0 && (
           <>
-            <Stack
-              direction="row"
-              spacing={1}
-              alignItems="center"
-              sx={{ mb: 1 }}
-            >
-              <WarningIcon
-                color="error"
-                fontSize="small"
-              />
-
-              <Typography
-                variant="h6"
-                color="error.main"
-              >
-                Overdue Tasks
-              </Typography>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+              <WarningIcon color="error" fontSize="small" />
+              <Typography variant="h6" color="error.main">Overdue Tasks</Typography>
             </Stack>
-
             <Stack spacing={1} sx={{ mb: 4 }}>
               {overdueTasks.map((task) => (
                 <Card
                   key={task.id}
                   variant="outlined"
-                  sx={{
-                    borderColor: 'error.main',
-                    borderWidth: 2,
-                  }}
+                  sx={{ borderColor: 'error.main', borderWidth: 2, cursor: 'pointer' }}
+                  onClick={() => navigate('/tasks')}
                 >
-                  <CardContent
-                    sx={{
-                      py: 1.5,
-                      '&:last-child': {
-                        pb: 1.5,
-                      },
-                    }}
-                  >
-                    <Stack
-                      direction="row"
-                      justifyContent="space-between"
-                      alignItems="center"
-                    >
-                      <Typography
-                        variant="body2"
-                        fontWeight={500}
-                      >
-                        {task.title}
-                      </Typography>
-
+                  <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Typography variant="body2" fontWeight={500}>{task.title}</Typography>
                       <Chip
-                        label={`${daysLate(task.dueDate)} day${
-                          daysLate(task.dueDate) === 1
-                            ? ''
-                            : 's'
-                        } late`}
+                        label={`${daysLate(task.dueDate)} day${daysLate(task.dueDate) === 1 ? '' : 's'} late`}
                         color="error"
                         size="small"
                       />
@@ -665,50 +507,20 @@ function DashboardPage({ currentUser }) {
           </>
         )}
 
-        <Stack
-          direction="row"
-          spacing={1}
-          alignItems="center"
-          sx={{ mb: 1 }}
-        >
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
           <AssignmentIcon fontSize="small" />
-
-          <Typography variant="h6">
-            Today's Tasks
-          </Typography>
+          <Typography variant="h6">Today's Tasks</Typography>
         </Stack>
-
         {todaysTasks.length === 0 ? (
-          <Typography
-            color="text.secondary"
-            sx={{ mb: 4 }}
-          >
-            Nothing due today. 🎉
-          </Typography>
+          <Typography color="text.secondary" sx={{ mb: 4 }}>Nothing due today. 🎉</Typography>
         ) : (
-          <Card
-            variant="outlined"
-            sx={{ mb: 4 }}
-          >
+          <Card variant="outlined" sx={{ mb: 4 }}>
             <CardContent>
               <Stack spacing={1}>
                 {todaysTasks.map((task) => (
-                  <Stack
-                    key={task.id}
-                    direction="row"
-                    alignItems="center"
-                    spacing={1}
-                  >
-                    <Checkbox
-                      checked={false}
-                      onChange={() =>
-                        handleQuickComplete(task.id)
-                      }
-                    />
-
-                    <Typography variant="body2">
-                      {task.title}
-                    </Typography>
+                  <Stack key={task.id} direction="row" alignItems="center" spacing={1}>
+                    <Checkbox checked={false} onChange={() => handleQuickComplete(task.id)} />
+                    <Typography variant="body2">{task.title}</Typography>
                   </Stack>
                 ))}
               </Stack>
@@ -716,14 +528,9 @@ function DashboardPage({ currentUser }) {
           </Card>
         )}
 
-        <Typography variant="h6" sx={{ mb: 1 }}>
-          Upcoming Deadlines
-        </Typography>
-
+        <Typography variant="h6" sx={{ mb: 1 }}>Upcoming Deadlines</Typography>
         {upcomingDeadlines.length === 0 ? (
-          <Typography color="text.secondary">
-            No upcoming deadlines.
-          </Typography>
+          <Typography color="text.secondary">No upcoming deadlines.</Typography>
         ) : (
           <Card variant="outlined">
             <CardContent>
@@ -733,21 +540,12 @@ function DashboardPage({ currentUser }) {
                     key={task.id}
                     direction="row"
                     justifyContent="space-between"
+                    sx={{ cursor: 'pointer' }}
+                    onClick={() => navigate('/tasks')}
                   >
-                    <Typography variant="body2">
-                      {task.title}
-                    </Typography>
-
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                    >
-                      {new Date(
-                        task.dueDate
-                      ).toLocaleDateString(undefined, {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
+                    <Typography variant="body2">{task.title}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {new Date(task.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                     </Typography>
                   </Stack>
                 ))}
@@ -761,159 +559,82 @@ function DashboardPage({ currentUser }) {
 
   // ============================================================
   // CLIENT DASHBOARD
-  // Project review focused
   // ============================================================
   if (isClient) {
-    const myProjects = projects.filter((p) =>
-      clientProjectIds.includes(p.id)
-    );
-
-    const activeCount = myProjects.filter(
-      (p) => p.status === 'In Progress'
-    ).length;
-
-    const completedCount = myProjects.filter(
-      (p) => p.status === 'Completed'
-    ).length;
+    const myProjects = projects.filter((p) => clientProjectIds.includes(p.id));
+    const activeCount = myProjects.filter((p) => p.status === 'In Progress').length;
+    const completedCount = myProjects.filter((p) => p.status === 'Completed').length;
 
     const pendingApprovalMilestones = milestones.filter(
-      (m) =>
-        clientProjectIds.includes(m.projectId) &&
-        m.status === 'Completed' &&
-        !m.clientApproved
+      (m) => clientProjectIds.includes(m.projectId) && m.status === 'Completed' && !m.clientApproved
     );
 
-    // ==========================================================
-    // CLIENT — APPROVE MILESTONE FROM DASHBOARD
-    // ==========================================================
-    const handleDashboardApprove = (milestoneId) => {
-      axios
-        .patch(
-          `${MILESTONES_API_URL}/${milestoneId}/approve`
-        )
+    // Opens the review dialog AND fetches any documents attached to this milestone
+    const handleDashboardApprove = (milestone) => {
+      setMilestoneToReview(milestone);
+      setMilestoneReviewOpen(true);
+      setLoadingDocs(true);
+      setMilestoneDocuments([]);
+
+      axios.get(`${MILESTONES_API_URL}/${milestone.id}/documents`)
+        .then((response) => {
+          setMilestoneDocuments(response.data);
+          setLoadingDocs(false);
+        })
+        .catch(() => setLoadingDocs(false));
+    };
+
+    const handleConfirmDashboardApprove = () => {
+      if (!milestoneToReview) return;
+
+      axios.patch(`${MILESTONES_API_URL}/${milestoneToReview.id}/approve`)
         .then(() => {
           setMilestones((prev) =>
-            prev.map((m) =>
-              m.id === milestoneId
-                ? {
-                    ...m,
-                    clientApproved: true,
-                  }
-                : m
-            )
+            prev.map((m) => (m.id === milestoneToReview.id ? { ...m, clientApproved: true } : m))
           );
+          setMilestoneReviewOpen(false);
+          setMilestoneToReview(null);
         })
         .catch(() => {});
     };
 
     return (
       <>
-        {/* GREETING */}
-        <Typography
-          variant="h5"
-          sx={{ mt: 4, mb: 3 }}
-        >
+        <Typography variant="h5" sx={{ mt: 4, mb: 3 }}>
           {getGreeting()}, {currentUser.fullName.split(' ')[0]} 👋
         </Typography>
 
-        {/* ======================================================
-            CLIENT STATISTICS
-        ====================================================== */}
         <Grid container spacing={2} sx={{ mb: 4 }}>
           <Grid item xs={6} sm={3}>
-            <StatCard
-              icon={<FolderIcon />}
-              label="My Projects"
-              value={myProjects.length}
-              color="primary"
-            />
+            <StatCard icon={<FolderIcon />} label="My Projects" value={myProjects.length} color="primary" onClick={() => navigate('/projects')} />
           </Grid>
-
           <Grid item xs={6} sm={3}>
-            <StatCard
-              icon={<TrendingUpIcon />}
-              label="Active"
-              value={activeCount}
-              color="info"
-            />
+            <StatCard icon={<TrendingUpIcon />} label="Active" value={activeCount} color="info" onClick={() => navigate('/projects')} />
           </Grid>
-
           <Grid item xs={6} sm={3}>
-            <StatCard
-              icon={<CheckCircleIcon />}
-              label="Completed"
-              value={completedCount}
-              color="success"
-            />
+            <StatCard icon={<CheckCircleIcon />} label="Completed" value={completedCount} color="success" onClick={() => navigate('/projects')} />
           </Grid>
-
           <Grid item xs={6} sm={3}>
-            <StatCard
-              icon={<FlagIcon />}
-              label="Pending Approvals"
-              value={pendingApprovalMilestones.length}
-              color="warning"
-            />
+            <StatCard icon={<FlagIcon />} label="Pending Approvals" value={pendingApprovalMilestones.length} color="warning" onClick={() => navigate('/milestones')} />
           </Grid>
         </Grid>
 
-        {/* ======================================================
-            PENDING MILESTONE APPROVALS
-        ====================================================== */}
         {pendingApprovalMilestones.length > 0 && (
           <>
-            <Typography
-              variant="h6"
-              sx={{ mb: 2 }}
-            >
-              Pending Milestone Approvals
-            </Typography>
-
+            <Typography variant="h6" sx={{ mb: 2 }}>Pending Milestone Approvals</Typography>
             <Stack spacing={2} sx={{ mb: 4 }}>
               {pendingApprovalMilestones.map((m) => (
-                <Card
-                  key={m.id}
-                  variant="outlined"
-                  sx={{
-                    borderColor: 'warning.main',
-                    borderWidth: 2,
-                  }}
-                >
+                <Card key={m.id} variant="outlined" sx={{ borderColor: 'warning.main', borderWidth: 2 }}>
                   <CardContent>
-                    <Stack
-                      direction="row"
-                      justifyContent="space-between"
-                      alignItems="center"
-                    >
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
                       <Box>
-                        <Typography
-                          variant="body2"
-                          fontWeight="bold"
-                        >
-                          {m.title}
-                        </Typography>
-
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                        >
-                          Project:{' '}
-                          {projects.find(
-                            (p) => p.id === m.projectId
-                          )?.name ||
-                            `#${m.projectId}`}
+                        <Typography variant="body2" fontWeight="bold">{m.title}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Project: {projects.find((p) => p.id === m.projectId)?.name || `#${m.projectId}`}
                         </Typography>
                       </Box>
-
-                      <Button
-                        variant="contained"
-                        color="success"
-                        size="small"
-                        onClick={() =>
-                          handleDashboardApprove(m.id)
-                        }
-                      >
-                        Approve
+                      <Button variant="contained" color="success" size="small" onClick={() => handleDashboardApprove(m)}>
+                        Review & Approve
                       </Button>
                     </Stack>
                   </CardContent>
@@ -923,79 +644,31 @@ function DashboardPage({ currentUser }) {
           </>
         )}
 
-        {/* ======================================================
-            MY PROJECTS
-        ====================================================== */}
-        <Typography
-          variant="h6"
-          sx={{ mb: 1 }}
-        >
-          My Projects
-        </Typography>
-
+        <Typography variant="h6" sx={{ mb: 1 }}>My Projects</Typography>
         {myProjects.length === 0 ? (
-          <Typography color="text.secondary">
-            No projects assigned yet.
-          </Typography>
+          <Typography color="text.secondary">No projects assigned yet.</Typography>
         ) : (
           <Card variant="outlined">
             <CardContent>
               <Stack spacing={2.5}>
                 {myProjects.map((project) => {
-                  const projectTasks = tasks.filter(
-                    (t) =>
-                      t.projectId === project.id
-                  );
-
+                  const projectTasks = tasks.filter((t) => t.projectId === project.id);
                   const progress =
                     projectTasks.length === 0
                       ? 0
                       : Math.round(
-                          (projectTasks.filter(
-                            (t) =>
-                              t.status === 'Completed'
-                          ).length /
-                            projectTasks.length) *
-                            100
+                          (projectTasks.filter((t) => t.status === 'Completed').length / projectTasks.length) * 100
                         );
-
                   const statusColor =
-                    project.status === 'Completed'
-                      ? 'success'
-                      : project.status === 'In Progress'
-                      ? 'warning'
-                      : 'default';
+                    project.status === 'Completed' ? 'success' : project.status === 'In Progress' ? 'warning' : 'default';
 
                   return (
-                    <Box key={project.id}>
-                      <Stack
-                        direction="row"
-                        justifyContent="space-between"
-                        alignItems="center"
-                      >
-                        <Typography
-                          variant="body2"
-                          fontWeight={500}
-                        >
-                          {project.name}
-                        </Typography>
-
-                        <Chip
-                          label={project.status}
-                          size="small"
-                          color={statusColor}
-                        />
+                    <Box key={project.id} sx={{ cursor: 'pointer' }} onClick={() => navigate('/projects')}>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Typography variant="body2" fontWeight={500}>{project.name}</Typography>
+                        <Chip label={project.status} size="small" color={statusColor} />
                       </Stack>
-
-                      <LinearProgress
-                        variant="determinate"
-                        value={progress}
-                        sx={{
-                          borderRadius: 1,
-                          height: 8,
-                          mt: 1,
-                        }}
-                      />
+                      <LinearProgress variant="determinate" value={progress} sx={{ borderRadius: 1, height: 8, mt: 1 }} />
                     </Box>
                   );
                 })}
@@ -1003,6 +676,84 @@ function DashboardPage({ currentUser }) {
             </CardContent>
           </Card>
         )}
+
+        {/* ---------- MILESTONE REVIEW DIALOG (now with attached documents) ---------- */}
+        <Dialog
+          open={milestoneReviewOpen}
+          onClose={() => {
+            setMilestoneReviewOpen(false);
+            setMilestoneToReview(null);
+          }}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Review Milestone Before Approving</DialogTitle>
+          <DialogContent>
+            {milestoneToReview && (
+              <Stack spacing={1.5} sx={{ mt: 1 }}>
+                <Typography variant="body1" fontWeight="bold">{milestoneToReview.title}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Project: {projects.find((p) => p.id === milestoneToReview.projectId)?.name || `#${milestoneToReview.projectId}`}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Completion Date: {new Date(milestoneToReview.dueDate).toLocaleDateString()}
+                </Typography>
+
+                {/* ---------- ATTACHED DELIVERABLE DOCUMENTS ---------- */}
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Attached Deliverables</Typography>
+                  {loadingDocs ? (
+                    <Typography variant="body2" color="text.secondary">Loading documents...</Typography>
+                  ) : milestoneDocuments.length === 0 ? (
+                    <Typography variant="body2" color="error" sx={{ mt: 0.5 }}>
+                      No document was attached to this milestone. Please contact the Project Manager
+                      before approving if you need to see the delivered work.
+                    </Typography>
+                  ) : (
+                    <List dense sx={{ bgcolor: 'action.hover', borderRadius: 1, mt: 0.5 }}>
+                      {milestoneDocuments.map((doc) => (
+                        <ListItem
+                          key={doc.id}
+                          secondaryAction={
+                            <IconButton edge="end" onClick={() => handleDownloadDocument(doc.id)}>
+                              <DownloadIcon />
+                            </IconButton>
+                          }
+                        >
+                          <ListItemIcon>
+                            <InsertDriveFileIcon />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={doc.fileName}
+                            secondary={`${doc.fileType.toUpperCase()} • ${new Date(doc.uploadedAt).toLocaleDateString()}`}
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  )}
+                </Box>
+
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  This milestone is marked Completed. Please review the attached document(s)
+                  above before approving. Approving confirms you accept the delivered work.
+                </Typography>
+              </Stack>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button
+              onClick={() => {
+                setMilestoneReviewOpen(false);
+                setMilestoneToReview(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="contained" color="success" onClick={handleConfirmDashboardApprove}>
+              Confirm Approval
+            </Button>
+          </DialogActions>
+        </Dialog>
       </>
     );
   }
@@ -1011,168 +762,67 @@ function DashboardPage({ currentUser }) {
   // PROJECT MANAGER DASHBOARD
   // ============================================================
   if (isProjectManager) {
-    const activeCount = projects.filter(
-      (p) => p.status === 'In Progress'
-    ).length;
-
-    const completedCount = projects.filter(
-      (p) => p.status === 'Completed'
-    ).length;
+    const activeCount = projects.filter((p) => p.status === 'In Progress').length;
+    const completedCount = projects.filter((p) => p.status === 'Completed').length;
 
     const atRiskProjects = projects.filter((project) => {
       const risk = riskByProject[project.id];
-
-      return (
-        risk &&
-        (risk.riskLevel === 'High' ||
-          risk.riskLevel === 'Medium')
-      );
+      return risk && (risk.riskLevel === 'High' || risk.riskLevel === 'Medium');
     });
 
-    const openBlockers = tasks.filter(
-      (t) => t.isBlocked
-    );
-
-    const pendingCount = projects.filter(
-      (p) => p.status === 'Pending'
-    ).length;
+    const openBlockers = tasks.filter((t) => t.isBlocked);
+    const pendingCount = projects.filter((p) => p.status === 'Pending').length;
 
     const statusChartData = [
-      {
-        name: 'Pending',
-        value: pendingCount,
-      },
-      {
-        name: 'In Progress',
-        value: activeCount,
-      },
-      {
-        name: 'Completed',
-        value: completedCount,
-      },
+      { name: 'Pending', value: pendingCount },
+      { name: 'In Progress', value: activeCount },
+      { name: 'Completed', value: completedCount },
     ].filter((item) => item.value > 0);
 
-    const STATUS_COLORS = [
-      '#9e9e9e',
-      '#F5A623',
-      '#2E7D32',
-    ];
+    const STATUS_COLORS = ['#9e9e9e', '#F5A623', '#2E7D32'];
 
     return (
       <>
-        <Typography
-          variant="h5"
-          sx={{ mt: 4, mb: 3 }}
-        >
+        <Typography variant="h5" sx={{ mt: 4, mb: 3 }}>
           {getGreeting()}, {currentUser.fullName.split(' ')[0]} 👋
         </Typography>
 
-        {/* STAT CARDS */}
-        <Grid container spacing={2} sx={{ mb: 4 }}>
-          <Grid item xs={6} sm={4}>
-            <StatCard
-              icon={<FolderIcon />}
-              label="My Projects"
-              value={projects.length}
-              color="primary"
-            />
-          </Grid>
+        <Box
+          sx={{
+            mb: 4,
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', sm: 'repeat(5, minmax(0, 1fr))' },
+            gap: 2,
+            width: '100%',
+          }}
+        >
+          <StatCard icon={<FolderIcon />} label="My Projects" value={projects.length} color="primary" onClick={() => navigate('/projects')} />
+          <StatCard icon={<WarningIcon />} label="At Risk" value={atRiskProjects.length} color="error" onClick={() => navigate('/projects')} />
+          <StatCard icon={<ReportProblemIcon />} label="Blockers" value={openBlockers.length} color="warning" onClick={() => navigate('/tasks')} />
+          <StatCard icon={<CheckCircleIcon />} label="Completed" value={completedCount} color="success" onClick={() => navigate('/projects')} />
+          <StatCard icon={<TrendingUpIcon />} label="In Progress" value={activeCount} color="info" onClick={() => navigate('/projects')} />
+        </Box>
 
-          <Grid item xs={6} sm={4}>
-            <StatCard
-              icon={<WarningIcon />}
-              label="At Risk"
-              value={atRiskProjects.length}
-              color="error"
-            />
-          </Grid>
-
-          <Grid item xs={6} sm={4}>
-            <StatCard
-              icon={<ReportProblemIcon />}
-              label="Blockers"
-              value={openBlockers.length}
-              color="warning"
-            />
-          </Grid>
-
-          <Grid item xs={6} sm={6}>
-            <StatCard
-              icon={<CheckCircleIcon />}
-              label="Completed"
-              value={completedCount}
-              color="success"
-            />
-          </Grid>
-
-          <Grid item xs={6} sm={6}>
-            <StatCard
-              icon={<TrendingUpIcon />}
-              label="In Progress"
-              value={activeCount}
-              color="info"
-            />
-          </Grid>
-        </Grid>
-
-        {/* PROJECTS REQUIRING ATTENTION */}
         {atRiskProjects.length > 0 && (
           <>
-            <Stack
-              direction="row"
-              spacing={1}
-              alignItems="center"
-              sx={{ mb: 1 }}
-            >
-              <WarningIcon
-                color="error"
-                fontSize="small"
-              />
-
-              <Typography
-                variant="h6"
-                color="error.main"
-              >
-                Projects Requiring Attention
-              </Typography>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+              <WarningIcon color="error" fontSize="small" />
+              <Typography variant="h6" color="error.main">Projects Requiring Attention</Typography>
             </Stack>
-
             <Stack spacing={1} sx={{ mb: 4 }}>
               {atRiskProjects.map((project) => (
                 <Card
                   key={project.id}
                   variant="outlined"
-                  sx={{
-                    borderColor: 'error.main',
-                    borderWidth: 2,
-                  }}
+                  sx={{ borderColor: 'error.main', borderWidth: 2, cursor: 'pointer' }}
+                  onClick={() => navigate('/projects')}
                 >
-                  <CardContent
-                    sx={{
-                      py: 1.5,
-                      '&:last-child': {
-                        pb: 1.5,
-                      },
-                    }}
-                  >
-                    <Stack
-                      direction="row"
-                      justifyContent="space-between"
-                      alignItems="center"
-                    >
-                      <Typography
-                        variant="body2"
-                        fontWeight={500}
-                      >
-                        {project.name}
-                      </Typography>
-
+                  <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Typography variant="body2" fontWeight={500}>{project.name}</Typography>
                       <Chip
                         label={`${riskByProject[project.id]?.riskLevel} Risk`}
-                        color={riskColor(
-                          riskByProject[project.id]
-                            ?.riskLevel
-                        )}
+                        color={riskColor(riskByProject[project.id]?.riskLevel)}
                         size="small"
                       />
                     </Stack>
@@ -1183,50 +833,19 @@ function DashboardPage({ currentUser }) {
           </>
         )}
 
-        {/* RECENT BLOCKERS */}
         {openBlockers.length > 0 && (
           <>
-            <Stack
-              direction="row"
-              spacing={1}
-              alignItems="center"
-              sx={{ mb: 1 }}
-            >
-              <ReportProblemIcon
-                color="warning"
-                fontSize="small"
-              />
-
-              <Typography variant="h6">
-                Recent Blockers
-              </Typography>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+              <ReportProblemIcon color="warning" fontSize="small" />
+              <Typography variant="h6">Recent Blockers</Typography>
             </Stack>
-
-            <Card
-              variant="outlined"
-              sx={{
-                mb: 4,
-                borderLeft: '4px solid',
-                borderLeftColor: 'warning.main',
-              }}
-            >
+            <Card variant="outlined" sx={{ mb: 4, borderLeft: '4px solid', borderLeftColor: 'warning.main' }}>
               <CardContent>
                 <Stack spacing={1.5}>
                   {openBlockers.map((task) => (
-                    <Box key={task.id}>
-                      <Typography
-                        variant="body2"
-                        fontWeight="bold"
-                      >
-                        {task.title}
-                      </Typography>
-
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                      >
-                        {task.blockerReason}
-                      </Typography>
+                    <Box key={task.id} sx={{ cursor: 'pointer' }} onClick={() => navigate('/tasks')}>
+                      <Typography variant="body2" fontWeight="bold">{task.title}</Typography>
+                      <Typography variant="caption" color="text.secondary">{task.blockerReason}</Typography>
                     </Box>
                   ))}
                 </Stack>
@@ -1235,50 +854,18 @@ function DashboardPage({ currentUser }) {
           </>
         )}
 
-        {/* PROJECT STATUS CHART */}
         {statusChartData.length > 0 && (
           <>
-            <Typography
-              variant="h6"
-              sx={{ mb: 2 }}
-            >
-              Project Status Breakdown
-            </Typography>
-
-            <Card
-              variant="outlined"
-              sx={{ mb: 4 }}
-            >
+            <Typography variant="h6" sx={{ mb: 2 }}>Project Status Breakdown</Typography>
+            <Card variant="outlined" sx={{ mb: 4 }}>
               <CardContent>
-                <ResponsiveContainer
-                  width="100%"
-                  height={260}
-                >
+                <ResponsiveContainer width="100%" height={260}>
                   <PieChart>
-                    <Pie
-                      data={statusChartData}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={90}
-                      label
-                    >
-                      {statusChartData.map(
-                        (entry, index) => (
-                          <Cell
-                            key={`cell-${index}`}
-                            fill={
-                              STATUS_COLORS[
-                                index %
-                                  STATUS_COLORS.length
-                              ]
-                            }
-                          />
-                        )
-                      )}
+                    <Pie data={statusChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label>
+                      {statusChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={STATUS_COLORS[index % STATUS_COLORS.length]} />
+                      ))}
                     </Pie>
-
                     <Tooltip />
                     <Legend />
                   </PieChart>
@@ -1288,81 +875,30 @@ function DashboardPage({ currentUser }) {
           </>
         )}
 
-        {/* PROJECT OVERVIEW */}
-        <Typography
-          variant="h6"
-          sx={{ mb: 1 }}
-        >
-          Project Overview
-        </Typography>
-
+        <Typography variant="h6" sx={{ mb: 1 }}>Project Overview</Typography>
         {projects.length === 0 ? (
-          <Typography color="text.secondary">
-            No projects yet.
-          </Typography>
+          <Typography color="text.secondary">No projects yet.</Typography>
         ) : (
           <Card variant="outlined">
             <CardContent>
               <Stack spacing={2.5}>
                 {projects.map((project) => {
-                  const projectTasks =
-                    tasks.filter(
-                      (t) =>
-                        t.projectId === project.id
-                    );
-
+                  const projectTasks = tasks.filter((t) => t.projectId === project.id);
                   const progress =
                     projectTasks.length === 0
                       ? 0
                       : Math.round(
-                          (projectTasks.filter(
-                            (t) =>
-                              t.status ===
-                              'Completed'
-                          ).length /
-                            projectTasks.length) *
-                            100
+                          (projectTasks.filter((t) => t.status === 'Completed').length / projectTasks.length) * 100
                         );
-
-                  const barColor =
-                    progress >= 75
-                      ? 'success'
-                      : progress >= 40
-                      ? 'warning'
-                      : 'error';
+                  const barColor = progress >= 75 ? 'success' : progress >= 40 ? 'warning' : 'error';
 
                   return (
-                    <Box key={project.id}>
-                      <Stack
-                        direction="row"
-                        justifyContent="space-between"
-                      >
-                        <Typography
-                          variant="body2"
-                          fontWeight={500}
-                        >
-                          {project.name}
-                        </Typography>
-
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          fontWeight="bold"
-                        >
-                          {progress}%
-                        </Typography>
+                    <Box key={project.id} sx={{ cursor: 'pointer' }} onClick={() => navigate('/projects')}>
+                      <Stack direction="row" justifyContent="space-between">
+                        <Typography variant="body2" fontWeight={500}>{project.name}</Typography>
+                        <Typography variant="body2" color="text.secondary" fontWeight="bold">{progress}%</Typography>
                       </Stack>
-
-                      <LinearProgress
-                        variant="determinate"
-                        value={progress}
-                        color={barColor}
-                        sx={{
-                          borderRadius: 1,
-                          height: 8,
-                          mt: 0.5,
-                        }}
-                      />
+                      <LinearProgress variant="determinate" value={progress} color={barColor} sx={{ borderRadius: 1, height: 8, mt: 0.5 }} />
                     </Box>
                   );
                 })}

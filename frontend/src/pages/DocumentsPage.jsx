@@ -18,6 +18,8 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -42,6 +44,10 @@ function DocumentsPage({ currentUser }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [projectId, setProjectId] = useState('');
   const [taskId, setTaskId] = useState('');
+
+  // NEW: controls the success confirmation toast shown after uploading a document
+  const [successOpen, setSuccessOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   const canDelete = currentUser?.role === 'Admin' || currentUser?.role === 'ProjectManager';
   // Only Admin/ProjectManager can see and choose from ALL projects.
@@ -101,9 +107,15 @@ function DocumentsPage({ currentUser }) {
     })
       .then(() => {
         fetchDocuments();
+
+        // NEW: show the success toast, naming the file that was uploaded
+        setSuccessMessage(`"${selectedFile.name}" was uploaded successfully.`);
+        setSuccessOpen(true);
+
         setSelectedFile(null);
         setProjectId('');
         setTaskId('');
+        setError(null);
       })
       .catch((err) => {
         setError(err.message);
@@ -261,6 +273,18 @@ function DocumentsPage({ currentUser }) {
           </List>
         </Card>
       )}
+
+      {/* NEW: success confirmation toast, shown after a document is uploaded */}
+      <Snackbar
+        open={successOpen}
+        autoHideDuration={4000}
+        onClose={() => setSuccessOpen(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setSuccessOpen(false)} severity="success" variant="filled" sx={{ width: '100%' }}>
+          {successMessage}
+        </Alert>
+      </Snackbar>
     </>
   );
 }

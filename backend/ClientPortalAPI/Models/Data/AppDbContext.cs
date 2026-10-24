@@ -56,6 +56,14 @@ public class AppDbContext : DbContext
             .HasForeignKey(d => d.UploadedByUserId)
             .OnDelete(DeleteBehavior.SetNull); // if the user is deleted, keep the document but unlink the uploader
 
+        // NEW: Configure ProjectDocument's optional link to a Milestone
+        // (e.g. supporting evidence a client reviews before approving the milestone)
+        modelBuilder.Entity<ProjectDocument>()
+            .HasOne(d => d.Milestone)
+            .WithMany()
+            .HasForeignKey(d => d.MilestoneId)
+            .OnDelete(DeleteBehavior.SetNull); // if the milestone is deleted, keep the document but unlink it
+
         // Configure ProjectMember (many-to-many join between Project and User)
         modelBuilder.Entity<ProjectMember>()
             .HasOne(pm => pm.Project)
@@ -73,5 +81,6 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ProjectMember>()
             .HasIndex(pm => new { pm.ProjectId, pm.UserId })
             .IsUnique();
+
     }
 }

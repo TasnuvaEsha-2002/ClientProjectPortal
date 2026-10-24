@@ -29,12 +29,10 @@ public class MilestonesController : ControllerBase
     public async Task<ActionResult<Milestone>> GetMilestone(int id)
     {
         var milestone = await _context.Milestones.FindAsync(id);
-
         if (milestone == null)
         {
             return NotFound();
         }
-
         return milestone;
     }
 
@@ -45,7 +43,6 @@ public class MilestonesController : ControllerBase
     {
         _context.Milestones.Add(milestone);
         await _context.SaveChangesAsync();
-
         return CreatedAtAction(nameof(GetMilestone), new { id = milestone.Id }, milestone);
     }
 
@@ -58,10 +55,8 @@ public class MilestonesController : ControllerBase
         {
             return BadRequest();
         }
-
         _context.Entry(milestone).State = EntityState.Modified;
         await _context.SaveChangesAsync();
-
         return NoContent();
     }
 
@@ -75,15 +70,13 @@ public class MilestonesController : ControllerBase
         {
             return NotFound();
         }
-
         _context.Milestones.Remove(milestone);
         await _context.SaveChangesAsync();
-
         return NoContent();
     }
+
     // PATCH: api/milestones/5/approve
     // Allows a Client to approve a completed milestone.
-    // Only Clients (and Admin, for oversight) can call this.
     [Authorize(Roles = "Admin,Client")]
     [HttpPatch("{id}/approve")]
     public async Task<IActionResult> ApproveMilestone(int id)
@@ -93,10 +86,29 @@ public class MilestonesController : ControllerBase
         {
             return NotFound();
         }
-
         milestone.ClientApproved = true;
         await _context.SaveChangesAsync();
-
         return NoContent();
+    }
+
+    // GET: api/milestones/5/documents
+    // Returns documents attached to a specific milestone — lets the Client
+    // review the actual delivered work before approving.
+    [Authorize]
+    [HttpGet("{id}/documents")]
+    public async Task<ActionResult<IEnumerable<object>>> GetMilestoneDocuments(int id)
+    {
+        var documents = await _context.Documents
+            .Where(d => d.MilestoneId == id)
+            .Select(d => new
+            {
+                d.Id,
+                d.FileName,
+                d.FileType,
+                d.UploadedAt
+            })
+            .ToListAsync();
+
+        return Ok(documents);
     }
 }

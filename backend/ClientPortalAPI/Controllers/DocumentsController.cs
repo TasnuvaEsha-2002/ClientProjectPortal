@@ -32,24 +32,71 @@ public class DocumentsController : ControllerBase
             query = query.Where(d => d.ProjectId == projectId.Value);
         }
 
-        return await query.OrderByDescending(d => d.UploadedAt).ToListAsync();
+        return await query
+            .OrderByDescending(d => d.UploadedAt)
+            .ToListAsync();
+    }
+
+    // GET: api/documents/milestone/5
+    // Returns all documents linked to a specific milestone.
+    // Used by the Client's milestone-approval dialog, so the client can
+    // review supporting evidence before approving.
+    [Authorize]
+    [HttpGet("milestone/{milestoneId}")]
+    public async Task<ActionResult<IEnumerable<ProjectDocument>>> GetMilestoneDocuments(int milestoneId)
+    {
+        var milestone = await _context.Milestones.FindAsync(milestoneId);
+
+        if (milestone == null)
+        {
+            return NotFound("Milestone not found.");
+        }
+
+        // Ownership check: Admin/PM can view any milestone's documents.
+        // Team Member/Client must actually be a member of the milestone's project.
+        if (!User.IsInRole("Admin") && !User.IsInRole("ProjectManager"))
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            int.TryParse(userIdClaim, out int userId);
+
+            bool isMember = await _context.ProjectMembers
+                .AnyAsync(pm => pm.ProjectId == milestone.ProjectId && pm.UserId == userId);
+
+            if (!isMember)
+            {
+                return Forbid();
+            }
+        }
+
+        var documents = await _context.Documents
+            .Where(d => d.MilestoneId == milestoneId)
+            .OrderByDescending(d => d.UploadedAt)
+            .ToListAsync();
+
+        return Ok(documents);
     }
 
     // POST: api/documents/upload
     // Accepts a file upload (multipart/form-data) along with a projectId,
-    // an optional taskId (for task-specific deliverables), and tracks who uploaded it.
-    // Any logged-in user can upload — Team Members need this to submit deliverables.
-    [Authorize]
+    // an optional taskId (for task-specific deliverables), an optional
+    // milestoneId (for milestone supporting evidence), and tracks who uploaded it.
+    // Clients are not allowed to upload documents.
+        [Authorize]
     [HttpPost("upload")]
     public async Task<ActionResult<ProjectDocument>> UploadDocument(
         [FromForm] IFormFile file,
         [FromForm] int projectId,
-        [FromForm] int? taskId)
+        [FromForm] int? taskId,
+        [FromForm] int? milestoneId)
     {
-        // Basic validation
         if (file == null || file.Length == 0)
         {
             return BadRequest("No file was uploaded.");
+        }
+
+        if (User.IsInRole("Client"))
+        {
+            return Forbid();
         }
 
         var project = await _context.Projects.FindAsync(projectId);
@@ -58,29 +105,23 @@ public class DocumentsController : ControllerBase
             return NotFound("Project not found.");
         }
 
-        // Get the logged-in user's ID from their JWT token claims
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         int? uploadedByUserId = int.TryParse(userIdClaim, out int uid) ? uid : null;
 
-        // Create an "uploads" folder inside the app if it doesn't already exist
         var uploadsFolder = Path.Combine(_env.ContentRootPath, "uploads");
         if (!Directory.Exists(uploadsFolder))
         {
             Directory.CreateDirectory(uploadsFolder);
         }
 
-        // Generate a unique file name so uploads never overwrite each other,
-        // while still keeping the original name for display purposes
         var uniqueFileName = $"{Guid.NewGuid()}_{file.FileName}";
         var filePath = Path.Combine(uploadsFolder, uniqueFileName);
 
-        // Save the actual file to disk
         using (var stream = new FileStream(filePath, FileMode.Create))
         {
             await file.CopyToAsync(stream);
         }
 
-        // Save the file's info (not the file itself) to the database
         var document = new ProjectDocument
         {
             FileName = file.FileName,
@@ -89,6 +130,7 @@ public class DocumentsController : ControllerBase
             UploadedAt = DateTime.UtcNow,
             ProjectId = projectId,
             TaskId = taskId,
+            MilestoneId = milestoneId,
             UploadedByUserId = uploadedByUserId
         };
 
@@ -104,6 +146,7 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> DownloadDocument(int id)
     {
         var document = await _context.Documents.FindAsync(id);
+
         if (document == null)
         {
             return NotFound();
@@ -118,7 +161,12 @@ public class DocumentsController : ControllerBase
         }
 
         var fileBytes = await System.IO.File.ReadAllBytesAsync(filePath);
-        return File(fileBytes, "application/octet-stream", document.FileName);
+
+        return File(
+            fileBytes,
+            "application/octet-stream",
+            document.FileName
+        );
     }
 
     // DELETE: api/documents/5
@@ -127,6 +175,7 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> DeleteDocument(int id)
     {
         var document = await _context.Documents.FindAsync(id);
+
         if (document == null)
         {
             return NotFound();
@@ -135,12 +184,14 @@ public class DocumentsController : ControllerBase
         // Delete the actual file from disk too, not just the database record
         var uploadsFolder = Path.Combine(_env.ContentRootPath, "uploads");
         var filePath = Path.Combine(uploadsFolder, document.FilePath);
+
         if (System.IO.File.Exists(filePath))
         {
             System.IO.File.Delete(filePath);
         }
 
         _context.Documents.Remove(document);
+
         await _context.SaveChangesAsync();
 
         return NoContent();

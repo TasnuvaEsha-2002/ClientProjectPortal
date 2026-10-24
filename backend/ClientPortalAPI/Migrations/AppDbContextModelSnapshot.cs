@@ -104,6 +104,9 @@ namespace ClientPortalAPI.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int?>("MilestoneId")
+                        .HasColumnType("integer");
+
                     b.Property<int>("ProjectId")
                         .HasColumnType("integer");
 
@@ -117,6 +120,8 @@ namespace ClientPortalAPI.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("MilestoneId");
 
                     b.HasIndex("ProjectId");
 
@@ -279,6 +284,11 @@ namespace ClientPortalAPI.Migrations
 
             modelBuilder.Entity("ClientPortalAPI.Models.ProjectDocument", b =>
                 {
+                    b.HasOne("ClientPortalAPI.Models.Milestone", "Milestone")
+                        .WithMany()
+                        .HasForeignKey("MilestoneId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("ClientPortalAPI.Models.Project", "Project")
                         .WithMany()
                         .HasForeignKey("ProjectId")
@@ -294,6 +304,8 @@ namespace ClientPortalAPI.Migrations
                         .WithMany()
                         .HasForeignKey("UploadedByUserId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Milestone");
 
                     b.Navigation("Project");
 

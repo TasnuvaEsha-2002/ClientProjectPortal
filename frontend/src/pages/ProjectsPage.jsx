@@ -14,6 +14,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   List,
   ListItem,
@@ -24,6 +25,8 @@ import {
   TableRow,
   TableCell,
   LinearProgress,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AssessmentIcon from '@mui/icons-material/Assessment';
@@ -32,6 +35,28 @@ import PsychologyIcon from '@mui/icons-material/Psychology';
 const API_URL = 'http://localhost:5256/api/Projects';
 const MEMBERS_API_URL = 'http://localhost:5256/api/ProjectMembers';
 const USERS_BRIEF_API_URL = 'http://localhost:5256/api/Auth/users-brief';
+
+// Returns today's date as a "YYYY-MM-DD" string — the format
+// HTML date inputs require for their min/value attributes.
+function getTodayDateString() {
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Returns the day AFTER a given "YYYY-MM-DD" date string,
+// also as a "YYYY-MM-DD" string — used as the minimum selectable
+// Deadline so it can never equal or precede the Start Date.
+function getNextDayString(dateString) {
+  const date = new Date(dateString + 'T00:00:00');
+  date.setDate(date.getDate() + 1);
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
 
 function ProjectsPage({ currentUser }) {
   const [projects, setProjects] = useState([]);
@@ -58,9 +83,25 @@ function ProjectsPage({ currentUser }) {
   // ---- Admin-only monitoring data ----
   const [adminOverview, setAdminOverview] = useState([]);
 
+  // Success toast — shared for create AND delete confirmations
+  const [successOpen, setSuccessOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+
+  // Proper MUI confirmation dialog for deleting a project,
+  // replacing the plain browser window.confirm() popup
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState(null);
+
   const isAdmin = currentUser?.role === 'Admin';
   const canManageProjects = currentUser?.role === 'ProjectManager';
   const isTeamMemberOrClient = currentUser?.role === 'TeamMember' || currentUser?.role === 'Client';
+
+  // The earliest date Start Date can be set to: today.
+  const todayStr = getTodayDateString();
+  // The earliest date Deadline can be set to: the day after whatever
+  // Start Date is currently selected (falls back to tomorrow-after-today
+  // if no Start Date has been chosen yet, so the field isn't wide open).
+  const minDeadlineStr = startDate ? getNextDayString(startDate) : getNextDayString(todayStr);
 
   const fetchProjects = () => {
     axios.get(API_URL)
@@ -95,6 +136,8 @@ function ProjectsPage({ currentUser }) {
       .then((response) => setAllUsers(response.data))
       .catch(() => {});
 
+    // Team Members/Clients need to know which projects they belong to,
+    // so we can filter the list to only show relevant projects
     if (isTeamMemberOrClient) {
       axios.get(`${MEMBERS_API_URL}/my-projects`)
         .then((response) => setMyProjectIds(response.data))
@@ -102,6 +145,20 @@ function ProjectsPage({ currentUser }) {
     }
   }, [isAdmin, isTeamMemberOrClient]);
 
+  // When Start Date changes, if the currently chosen Deadline is now
+  // invalid (same as or before the new Start Date), clear it — forcing
+  // the user to pick a valid Deadline again instead of silently keeping
+  // an inconsistent value.
+  const handleStartDateChange = (e) => {
+    const newStartDate = e.target.value;
+    setStartDate(newStartDate);
+
+    if (deadline && newStartDate && deadline <= newStartDate) {
+      setDeadline('');
+    }
+  };
+
+  // Creates the project, then adds each selected member to it
   const handleSubmit = (e) => {
     e.preventDefault();
 
@@ -117,12 +174,14 @@ function ProjectsPage({ currentUser }) {
     axios.post(API_URL, newProject)
       .then((response) => {
         const createdProjectId = response.data.id;
+
         const addMemberPromises = selectedMemberIds.map((userId) =>
           axios.post(MEMBERS_API_URL, { projectId: createdProjectId, userId })
         );
-        return Promise.all(addMemberPromises);
+
+        return Promise.all(addMemberPromises).then(() => response.data);
       })
-      .then(() => {
+      .then((createdProject) => {
         fetchProjects();
         setName('');
         setDescription('');
@@ -130,16 +189,39 @@ function ProjectsPage({ currentUser }) {
         setDeadline('');
         setStatus('Pending');
         setSelectedMemberIds([]);
+        setError(null);
+
+        // Show the success toast, naming the project that was created
+        setSuccessMessage(`Project "${createdProject.name}" was created successfully.`);
+        setSuccessOpen(true);
       })
       .catch((err) => {
         setError(err.message);
       });
   };
 
-  const handleDelete = (id) => {
-    axios.delete(`${API_URL}/${id}`)
-      .then(() => fetchProjects())
+  // Opens the confirmation dialog instead of deleting immediately
+  const handleDeleteClick = (project) => {
+    setProjectToDelete(project);
+    setDeleteDialogOpen(true);
+  };
+
+  // Runs only after the user confirms inside the dialog
+  const handleConfirmDelete = () => {
+    if (!projectToDelete) return;
+
+    axios.delete(`${API_URL}/${projectToDelete.id}`)
+      .then(() => {
+        fetchProjects();
+        setDeleteDialogOpen(false);
+
+        setSuccessMessage(`Project "${projectToDelete.name}" was deleted successfully.`);
+        setSuccessOpen(true);
+        setProjectToDelete(null);
+      })
       .catch((err) => {
+        setDeleteDialogOpen(false);
+        setProjectToDelete(null);
         if (err.response?.status === 401 || err.response?.status === 403) {
           setError("You don't have permission to delete projects.");
         } else {
@@ -289,8 +371,13 @@ function ProjectsPage({ currentUser }) {
                 label="Start Date"
                 type="date"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                slotProps={{ inputLabel: { shrink: true } }}
+                onChange={handleStartDateChange}
+                required
+                slotProps={{
+                  inputLabel: { shrink: true },
+                  // Prevents selecting any date before today
+                  htmlInput: { min: todayStr },
+                }}
                 fullWidth
               />
               <TextField
@@ -298,7 +385,14 @@ function ProjectsPage({ currentUser }) {
                 type="date"
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
-                slotProps={{ inputLabel: { shrink: true } }}
+                required
+                disabled={!startDate}
+                helperText={!startDate ? 'Select a Start Date first' : ''}
+                slotProps={{
+                  inputLabel: { shrink: true },
+                  // Prevents selecting the Start Date itself or any date before it
+                  htmlInput: { min: minDeadlineStr },
+                }}
                 fullWidth
               />
               <TextField select label="Status" value={status} onChange={(e) => setStatus(e.target.value)} fullWidth>
@@ -333,6 +427,7 @@ function ProjectsPage({ currentUser }) {
             </Stack>
           </Box>
 
+          {/* ---------- REQUIREMENT CHANGE IMPACT ANALYSIS FORM ---------- */}
           <Typography variant="h6" sx={{ mt: 5, mb: 2 }}>
             Analyze Requirement Change (AI-Assisted)
           </Typography>
@@ -377,6 +472,7 @@ function ProjectsPage({ currentUser }) {
         </Typography>
       )}
 
+      {/* ---------- PROJECT LIST ---------- */}
       <Typography variant="h6" sx={{ mt: 5, mb: 2 }}>
         Projects
       </Typography>
@@ -396,13 +492,19 @@ function ProjectsPage({ currentUser }) {
                   </Typography>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Chip label={project.status} color={statusColor(project.status)} size="small" />
-                  {canManageProjects && (  
-                    <IconButton size="small" onClick={() => handleCheckRisk(project.id)} color="primary" title="Check Deadline Risk">
-                      <AssessmentIcon fontSize="small" />
-                    </IconButton>
-                  )}  
+
+                    {/* Deadline Risk Analysis is a Project Manager-only tool.
+                        Backend already blocks this endpoint for other roles
+                        with a 403 — this hides the icon from Team Member/Client
+                        too, so they never see an option they can't actually use. */}
                     {canManageProjects && (
-                      <IconButton size="small" onClick={() => handleDelete(project.id)} color="error" title="Delete Project">
+                      <IconButton size="small" onClick={() => handleCheckRisk(project.id)} color="primary" title="Check Deadline Risk">
+                        <AssessmentIcon fontSize="small" />
+                      </IconButton>
+                    )}
+
+                    {canManageProjects && (
+                      <IconButton size="small" onClick={() => handleDeleteClick(project)} color="error" title="Delete Project">
                         <DeleteIcon fontSize="small" />
                       </IconButton>
                     )}
@@ -417,6 +519,7 @@ function ProjectsPage({ currentUser }) {
         </Stack>
       )}
 
+      {/* ---------- RISK ANALYSIS POPUP DIALOG ---------- */}
       <Dialog open={riskDialogOpen} onClose={() => setRiskDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Deadline Risk Analysis {riskData && `- ${riskData.projectName}`}</DialogTitle>
         <DialogContent>
@@ -452,6 +555,7 @@ function ProjectsPage({ currentUser }) {
         </DialogActions>
       </Dialog>
 
+      {/* ---------- IMPACT ANALYSIS POPUP DIALOG ---------- */}
       <Dialog open={impactDialogOpen} onClose={() => setImpactDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Requirement Change Impact Analysis</DialogTitle>
         <DialogContent>
@@ -492,6 +596,36 @@ function ProjectsPage({ currentUser }) {
           <Button onClick={() => setImpactDialogOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
+
+      {/* ---------- DELETE CONFIRMATION DIALOG (replaces window.confirm()) ---------- */}
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete Project?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete{' '}
+            <strong>{projectToDelete?.name}</strong>? This will also delete all of its
+            tasks, milestones, and documents. This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleConfirmDelete}>
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ---------- SUCCESS TOAST (used for both create and delete) ---------- */}
+      <Snackbar
+        open={successOpen}
+        autoHideDuration={4000}
+        onClose={() => setSuccessOpen(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setSuccessOpen(false)} severity="success" variant="filled" sx={{ width: '100%' }}>
+          {successMessage}
+        </Alert>
+      </Snackbar>
     </>
   );
 }

@@ -111,6 +111,9 @@ public class TasksController : ControllerBase
     }
 
     // DELETE: api/tasks/5
+    // Only a Project Manager can delete a task — matches the frontend's
+    // canDeleteTasks check, so the delete button is only ever shown to,
+    // and only ever succeeds for, a Project Manager.
     [Authorize(Roles = "ProjectManager")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteTask(int id)
@@ -126,6 +129,7 @@ public class TasksController : ControllerBase
 
         return NoContent();
     }
+
     // PATCH: api/tasks/5/progress
     // Lightweight endpoint for Team Members: allows updating ONLY the
     // completion percentage of a task.
@@ -152,6 +156,7 @@ public class TasksController : ControllerBase
 
         return NoContent();
     }
+
     // PATCH: api/tasks/5/blocker
     // Lets any logged-in user (typically the assigned Team Member) report
     // that they're blocked on a task, along with the reason. Passing an
