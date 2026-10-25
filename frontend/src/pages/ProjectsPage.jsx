@@ -429,7 +429,7 @@ function ProjectsPage({ currentUser }) {
 
           {/* ---------- REQUIREMENT CHANGE IMPACT ANALYSIS FORM ---------- */}
           <Typography variant="h6" sx={{ mt: 5, mb: 2 }}>
-            Analyze Requirement Change (AI-Assisted)
+            Analyze Requirement Change (Rule-Based)
           </Typography>
 
           <Box component="form" onSubmit={handleAnalyzeImpact}>
